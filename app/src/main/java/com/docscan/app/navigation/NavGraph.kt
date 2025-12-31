@@ -34,7 +34,7 @@ fun NavGraph(
                     viewModel.reset()
                     navController.navigate(Screen.Scanner.route)
                 },
-                onGalleryImageSelected = { file ->
+                onGalleryImageSelected = { file: java.io.File ->
                     viewModel.reset()
                     viewModel.setCapturedImage(file)
                     navController.navigate(Screen.CropEditor.route)

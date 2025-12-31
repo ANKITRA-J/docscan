@@ -40,6 +40,7 @@ import com.docscan.app.R
 import com.docscan.app.model.ScanDocument
 import com.docscan.app.navigation.Screen
 import com.docscan.app.theme.AppColors
+import java.io.File
 
 /**
  * Home / Recent Scans screen

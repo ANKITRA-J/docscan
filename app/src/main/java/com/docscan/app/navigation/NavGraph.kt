@@ -37,11 +37,9 @@ fun NavGraph(
                 onGalleryImagesSelected = { files: List<java.io.File> ->
                     viewModel.reset()
                     if (files.isNotEmpty()) {
-                        // Process first image
-                        viewModel.setCapturedImage(files[0])
+                        // Set all files in queue
+                        viewModel.setImageQueue(files)
                         navController.navigate(Screen.CropEditor.route)
-                        
-                        // TODO: Queue remaining images for processing
                     }
                 },
                 onDocumentClick = { document ->
@@ -83,6 +81,7 @@ fun NavGraph(
                 enhancedBitmap = viewModel.enhancedBitmap.value,
                 currentMode = viewModel.currentEnhanceMode.value,
                 pageCount = viewModel.getPageCount(),
+                hasMoreInQueue = viewModel.hasMoreImagesInQueue(),
                 onModeSelected = { mode ->
                     viewModel.applyEnhancement(mode)
                 },
@@ -95,6 +94,17 @@ fun NavGraph(
                     viewModel.resetCurrentPage()
                     // Go back to scanner
                     navController.navigate(Screen.Scanner.route) {
+                        popUpTo(Screen.Home.route)
+                    }
+                },
+                onNext = {
+                    // Save current page
+                    viewModel.addPageToCurrentDocument()
+                    viewModel.resetCurrentPage()
+                    // Process next image from queue
+                    viewModel.processNextImageFromQueue()
+                    // Go to crop screen for next image
+                    navController.navigate(Screen.CropEditor.route) {
                         popUpTo(Screen.Home.route)
                     }
                 },

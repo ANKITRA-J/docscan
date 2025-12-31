@@ -45,8 +45,34 @@ class ScanViewModel : ViewModel() {
     var currentDocumentPagePaths = mutableStateOf<List<String>>(emptyList())
         private set
     
+    // Queue of images to process (for gallery multi-select)
+    var imageQueue = mutableStateOf<List<File>>(emptyList())
+        private set
+    
     fun setCapturedImage(file: File) {
         capturedImageFile.value = file
+    }
+    
+    fun setImageQueue(files: List<File>) {
+        imageQueue.value = files
+        if (files.isNotEmpty()) {
+            capturedImageFile.value = files[0]
+        }
+    }
+    
+    fun processNextImageFromQueue() {
+        val queue = imageQueue.value
+        if (queue.size > 1) {
+            // Remove first image and set next one
+            imageQueue.value = queue.drop(1)
+            capturedImageFile.value = queue[1]
+        } else {
+            imageQueue.value = emptyList()
+        }
+    }
+    
+    fun hasMoreImagesInQueue(): Boolean {
+        return imageQueue.value.size > 1
     }
     
     fun applyCrop(
@@ -123,6 +149,7 @@ class ScanViewModel : ViewModel() {
         currentDocumentId.value = null
         currentDocumentPages.value = emptyList()
         currentDocumentPagePaths.value = emptyList()
+        imageQueue.value = emptyList()
     }
     
     fun resetCurrentPage() {

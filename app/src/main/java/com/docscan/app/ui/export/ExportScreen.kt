@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalMaterial3Api::class)
+
 package com.docscan.app.ui.export
 
 import androidx.compose.foundation.background

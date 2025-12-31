@@ -177,6 +177,8 @@ fun ExportScreen(
                                     }
                                     context.startActivity(Intent.createChooser(shareIntent, "Share PDF"))
                                     
+                                    // Reset for next scan
+                                    viewModel.reset()
                                     onExportComplete()
                                 } else {
                                     Toast.makeText(context, "Failed to create PDF", Toast.LENGTH_SHORT).show()
@@ -226,6 +228,8 @@ fun ExportScreen(
                                     }
                                     context.startActivity(Intent.createChooser(shareIntent, "Share Image"))
                                     
+                                    // Reset for next scan
+                                    viewModel.reset()
                                     onExportComplete()
                                 } else {
                                     Toast.makeText(context, "Failed to save image", Toast.LENGTH_SHORT).show()

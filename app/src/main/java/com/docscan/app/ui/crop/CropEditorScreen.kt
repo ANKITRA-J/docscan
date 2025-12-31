@@ -307,27 +307,33 @@ fun CropOverlay(
             modifier = Modifier
                 .fillMaxSize()
                 .pointerInput(Unit) {
+                    var currentCorner: CornerType? = null
+                    
                     detectDragGestures(
                         onDragStart = { offset ->
                             if (canvasSize.width > 0 && canvasSize.height > 0) {
-                                activeCorner = findNearestCorner(offset, corners, canvasSize, threshold = 150f)
+                                currentCorner = findNearestCorner(offset, corners, canvasSize, threshold = 150f)
+                                activeCorner = currentCorner
                             }
                         },
                         onDragEnd = {
+                            currentCorner = null
                             activeCorner = null
                             onDragEnd()
                         },
                         onDragCancel = {
+                            currentCorner = null
                             activeCorner = null
                             onDragEnd()
                         }
                     ) { change, _ ->
-                        if (canvasSize.width > 0 && canvasSize.height > 0 && activeCorner != null) {
+                        if (canvasSize.width > 0 && canvasSize.height > 0 && currentCorner != null) {
+                            change.consume()
                             val newOffset = Offset(
                                 (change.position.x / canvasSize.width).coerceIn(0.0f, 1.0f),
                                 (change.position.y / canvasSize.height).coerceIn(0.0f, 1.0f)
                             )
-                            onCornerDrag(activeCorner!!, newOffset)
+                            onCornerDrag(currentCorner!!, newOffset)
                         }
                     }
                 }

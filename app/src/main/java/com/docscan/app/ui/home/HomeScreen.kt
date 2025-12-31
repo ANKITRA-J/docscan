@@ -29,6 +29,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -48,9 +49,11 @@ import com.docscan.app.theme.AppColors
 fun HomeScreen(
     documents: List<ScanDocument>,
     onScanClick: () -> Unit,
+    onGalleryImageSelected: (File) -> Unit,
     onDocumentClick: (ScanDocument) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     val screenWidth = LocalConfiguration.current.screenWidthDp.dp
     var showMenu by remember { mutableStateOf(false) }
     
@@ -59,9 +62,23 @@ fun HomeScreen(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         uri?.let {
-            // TODO: Handle gallery image selection
-            // For now, just show a toast
-            // In a full implementation, you would copy the image and navigate to crop screen
+            try {
+                // Copy the image from gallery to app's internal storage
+                val inputStream = context.contentResolver.openInputStream(uri)
+                val file = com.docscan.app.util.FileUtils.createImageFile(context)
+                
+                inputStream?.use { input ->
+                    file.outputStream().use { output ->
+                        input.copyTo(output)
+                    }
+                }
+                
+                // Pass the file to the callback
+                onGalleryImageSelected(file)
+            } catch (e: Exception) {
+                e.printStackTrace()
+                android.widget.Toast.makeText(context, "Failed to load image", android.widget.Toast.LENGTH_SHORT).show()
+            }
         }
     }
     

@@ -34,6 +34,11 @@ fun NavGraph(
                     viewModel.reset()
                     navController.navigate(Screen.Scanner.route)
                 },
+                onGalleryImageSelected = { file ->
+                    viewModel.reset()
+                    viewModel.setCapturedImage(file)
+                    navController.navigate(Screen.CropEditor.route)
+                },
                 onDocumentClick = { document ->
                     navController.navigate(Screen.Export.createRoute(document.id))
                 }

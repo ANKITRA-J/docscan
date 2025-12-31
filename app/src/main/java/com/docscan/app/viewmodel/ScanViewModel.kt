@@ -48,7 +48,13 @@ class ScanViewModel : ViewModel() {
         bottomRight: Offset
     ) {
         val imageFile = capturedImageFile.value ?: return
-        val bitmap = BitmapFactory.decodeFile(imageFile.absolutePath) ?: return
+        var bitmap = BitmapFactory.decodeFile(imageFile.absolutePath) ?: return
+        
+        // Apply rotation if needed
+        val rotation = com.docscan.app.util.FileUtils.getImageRotation(imageFile)
+        if (rotation != 0) {
+            bitmap = com.docscan.app.util.FileUtils.rotateBitmap(bitmap, rotation)
+        }
         
         val cropped = ImageProcessor.perspectiveTransform(
             bitmap,

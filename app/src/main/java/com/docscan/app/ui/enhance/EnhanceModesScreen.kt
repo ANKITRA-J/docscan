@@ -1,6 +1,7 @@
 package com.docscan.app.ui.enhance
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
@@ -33,7 +34,6 @@ import com.docscan.app.theme.AppColors
  * - Update preview in real-time
  * - Save selected enhancement mode
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EnhanceModesScreen(
     imageUri: String? = null, // TODO: Replace with actual image data
@@ -208,24 +208,23 @@ fun EnhanceModeChip(
         MaterialTheme.colorScheme.onSurfaceVariant
     }
     
-    FilterChip(
-        selected = isSelected,
+    Surface(
         onClick = onClick,
-        label = {
+        modifier = modifier,
+        shape = RoundedCornerShape(20.dp),
+        color = containerColor,
+        contentColor = contentColor
+    ) {
+        Box(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            contentAlignment = Alignment.Center
+        ) {
             Text(
                 text = mode.displayName,
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
             )
-        },
-        colors = FilterChipDefaults.filterChipColors(
-            selectedContainerColor = containerColor,
-            containerColor = containerColor,
-            selectedLabelColor = contentColor,
-            labelColor = contentColor
-        ),
-        shape = RoundedCornerShape(20.dp),
-        modifier = modifier
-    )
+        }
+    }
 }
 

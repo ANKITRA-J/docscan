@@ -32,7 +32,6 @@ import com.docscan.app.theme.AppColors
  * - Handle file permissions (Android 13+)
  * - Show export progress and success feedback
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ExportScreen(
     documentId: String,
@@ -169,9 +168,9 @@ fun ExportOptionCard(
     modifier: Modifier = Modifier
 ) {
     Card(
-        onClick = onClick,
         modifier = modifier
             .fillMaxWidth()
+            .clickable(onClick = onClick)
             .shadow(
                 elevation = 2.dp,
                 shape = RoundedCornerShape(12.dp)

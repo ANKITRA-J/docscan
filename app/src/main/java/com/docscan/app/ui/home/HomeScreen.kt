@@ -33,7 +33,6 @@ import com.docscan.app.theme.AppColors
  * Home / Recent Scans screen
  * Displays a grid of recently scanned documents with a floating action button to scan new documents
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     documents: List<ScanDocument>,
@@ -130,9 +129,9 @@ fun DocumentCard(
     modifier: Modifier = Modifier
 ) {
     Card(
-        onClick = onClick,
         modifier = modifier
             .fillMaxWidth()
+            .clickable(onClick = onClick)
             .shadow(
                 elevation = 2.dp,
                 shape = RoundedCornerShape(12.dp)

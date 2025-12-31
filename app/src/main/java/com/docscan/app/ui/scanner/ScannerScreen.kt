@@ -1,10 +1,17 @@
+@file:OptIn(ExperimentalMaterial3Api::class)
+
 package com.docscan.app.ui.scanner
 
+import android.Manifest
+import android.content.Context
+import android.util.Log
+import androidx.camera.core.*
+import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.view.PreviewView
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FlashOff
@@ -14,67 +21,103 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
-import com.docscan.app.R
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.ContextCompat
 import com.docscan.app.theme.AppColors
+import com.docscan.app.util.FileUtils
+import com.google.accompanist.permissions.ExperimentalPermissionsApi
+import com.google.accompanist.permissions.isGranted
+import com.google.accompanist.permissions.rememberPermissionState
+import java.io.File
+import java.util.concurrent.Executor
+import kotlin.coroutines.resume
+import kotlin.coroutines.suspendCoroutine
 
 /**
- * Scanner preview screen
- * Displays camera preview with document detection frame and capture controls
- * 
- * TODO: Integrate CameraX for actual camera preview
- * - Use androidx.camera:camera-view with PreviewView
- * - Handle camera permissions
- * - Implement image capture on button press
- * - Pass captured image to crop editor
+ * Scanner preview screen with CameraX integration
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalPermissionsApi::class)
 @Composable
 fun ScannerScreen(
     onClose: () -> Unit,
-    onCapture: () -> Unit,
+    onImageCaptured: (File) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    
+    val cameraPermissionState = rememberPermissionState(Manifest.permission.CAMERA)
+    
     var flashEnabled by remember { mutableStateOf(false) }
+    var isCapturing by remember { mutableStateOf(false) }
+    
     val screenWidth = LocalConfiguration.current.screenWidthDp
     val screenHeight = LocalConfiguration.current.screenHeightDp
     
-    // Calculate frame dimensions (16:9 aspect ratio, centered)
+    // Calculate frame dimensions
     val frameWidth = (screenWidth * 0.85f).dp
     val frameAspectRatio = 16f / 9f
     val frameHeight = frameWidth / frameAspectRatio
+    
+    LaunchedEffect(Unit) {
+        if (!cameraPermissionState.status.isGranted) {
+            cameraPermissionState.launchPermissionRequest()
+        }
+    }
     
     Box(
         modifier = modifier
             .fillMaxSize()
             .background(Color.Black)
     ) {
-        // Camera preview placeholder
-        // TODO: Replace with actual CameraX PreviewView
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Gray.copy(alpha = 0.3f)),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = "Camera Preview\n(Integrate CameraX here)",
-                color = Color.White,
-                style = MaterialTheme.typography.bodyLarge
+        if (cameraPermissionState.status.isGranted) {
+            CameraPreview(
+                onImageCaptured = { file ->
+                    isCapturing = false
+                    onImageCaptured(file)
+                },
+                flashEnabled = flashEnabled,
+                isCapturing = isCapturing,
+                modifier = Modifier.fillMaxSize()
             )
+            
+            // Scanner overlay
+            ScannerOverlay(
+                frameWidth = frameWidth,
+                frameHeight = frameHeight,
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
+            // Permission denied state
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Text(
+                        text = "Camera permission is required",
+                        color = Color.White,
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                    Button(onClick = { cameraPermissionState.launchPermissionRequest() }) {
+                        Text("Grant Permission")
+                    }
+                }
+            }
         }
         
-        // Top bar with close button
+        // Top bar
         TopAppBar(
             title = { },
             navigationIcon = {
@@ -101,51 +144,124 @@ fun ScannerScreen(
             modifier = Modifier.fillMaxWidth()
         )
         
-        // Document detection frame overlay
-        ScannerOverlay(
-            frameWidth = frameWidth,
-            frameHeight = frameHeight,
-            modifier = Modifier.fillMaxSize()
-        )
-        
         // Bottom controls
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .padding(bottom = 48.dp)
-        ) {
-            // Instructions
-            Text(
-                text = "Position document within frame",
-                style = MaterialTheme.typography.bodyMedium,
-                color = Color.White,
-                modifier = Modifier.padding(bottom = 24.dp)
-            )
-            
-            // Capture button
-            Button(
-                onClick = onCapture,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary
-                ),
-                shape = CircleShape,
+        if (cameraPermissionState.status.isGranted) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier
-                    .size(72.dp)
-                    .shadow(
-                        elevation = 8.dp,
-                        shape = CircleShape
-                    )
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .padding(bottom = 48.dp)
             ) {
-                Icon(
-                    imageVector = Icons.Default.PhotoCamera,
-                    contentDescription = "Capture",
-                    modifier = Modifier.size(32.dp),
-                    tint = Color.White
+                Text(
+                    text = "Position document within frame",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.White,
+                    modifier = Modifier.padding(bottom = 24.dp)
                 )
+                
+                Button(
+                    onClick = { isCapturing = true },
+                    enabled = !isCapturing,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary
+                    ),
+                    shape = CircleShape,
+                    modifier = Modifier
+                        .size(72.dp)
+                        .shadow(elevation = 8.dp, shape = CircleShape)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.PhotoCamera,
+                        contentDescription = "Capture",
+                        modifier = Modifier.size(32.dp),
+                        tint = Color.White
+                    )
+                }
             }
         }
+    }
+}
+
+@Composable
+fun CameraPreview(
+    onImageCaptured: (File) -> Unit,
+    flashEnabled: Boolean,
+    isCapturing: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    
+    val previewView = remember { PreviewView(context) }
+    val imageCapture = remember { mutableStateOf<ImageCapture?>(null) }
+    val camera = remember { mutableStateOf<Camera?>(null) }
+    
+    LaunchedEffect(flashEnabled) {
+        camera.value?.cameraControl?.enableTorch(flashEnabled)
+    }
+    
+    LaunchedEffect(isCapturing) {
+        if (isCapturing) {
+            val capture = imageCapture.value ?: return@LaunchedEffect
+            val file = FileUtils.createImageFile(context)
+            val outputOptions = ImageCapture.OutputFileOptions.Builder(file).build()
+            
+            capture.takePicture(
+                outputOptions,
+                ContextCompat.getMainExecutor(context),
+                object : ImageCapture.OnImageSavedCallback {
+                    override fun onImageSaved(output: ImageCapture.OutputFileResults) {
+                        onImageCaptured(file)
+                    }
+                    
+                    override fun onError(exception: ImageCaptureException) {
+                        Log.e("CameraPreview", "Image capture failed", exception)
+                    }
+                }
+            )
+        }
+    }
+    
+    LaunchedEffect(previewView) {
+        val cameraProvider = context.getCameraProvider()
+        
+        val preview = Preview.Builder().build().also {
+            it.setSurfaceProvider(previewView.surfaceProvider)
+        }
+        
+        val imageCaptureBuilder = ImageCapture.Builder()
+            .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
+            .setFlashMode(if (flashEnabled) ImageCapture.FLASH_MODE_ON else ImageCapture.FLASH_MODE_OFF)
+        
+        imageCapture.value = imageCaptureBuilder.build()
+        
+        val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
+        
+        try {
+            cameraProvider.unbindAll()
+            camera.value = cameraProvider.bindToLifecycle(
+                lifecycleOwner,
+                cameraSelector,
+                preview,
+                imageCapture.value
+            )
+        } catch (e: Exception) {
+            Log.e("CameraPreview", "Camera binding failed", e)
+        }
+    }
+    
+    AndroidView(
+        factory = { previewView },
+        modifier = modifier
+    )
+}
+
+suspend fun Context.getCameraProvider(): ProcessCameraProvider = suspendCoroutine { continuation ->
+    ProcessCameraProvider.getInstance(this).also { future ->
+        future.addListener({
+            continuation.resume(future.get())
+        }, ContextCompat.getMainExecutor(this))
     }
 }
 
@@ -169,26 +285,22 @@ fun ScannerOverlay(
         val frameRight = centerX + frameWidthPx / 2
         val frameBottom = centerY + frameHeightPx / 2
         
-        // Draw semi-transparent overlay (four rectangles around the frame)
-        // Top
+        // Draw semi-transparent overlay
         drawRect(
             color = AppColors.ScannerOverlay,
             topLeft = Offset(0f, 0f),
             size = Size(size.width, frameTop)
         )
-        // Bottom
         drawRect(
             color = AppColors.ScannerOverlay,
             topLeft = Offset(0f, frameBottom),
             size = Size(size.width, size.height - frameBottom)
         )
-        // Left
         drawRect(
             color = AppColors.ScannerOverlay,
             topLeft = Offset(0f, frameTop),
             size = Size(frameLeft, frameHeightPx)
         )
-        // Right
         drawRect(
             color = AppColors.ScannerOverlay,
             topLeft = Offset(frameRight, frameTop),
@@ -200,14 +312,14 @@ fun ScannerOverlay(
             color = AppColors.ScannerFrame,
             topLeft = Offset(frameLeft, frameTop),
             size = Size(frameWidthPx, frameHeightPx),
-            style = Stroke(width = 3.dp.toPx())
+            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 3.dp.toPx())
         )
         
         // Draw corner indicators
         val cornerLength = 32.dp.toPx()
         val cornerWidth = 4.dp.toPx()
         
-        // Top-left corner
+        // Top-left
         drawRect(
             color = AppColors.ScannerCorner,
             topLeft = Offset(frameLeft, frameTop),
@@ -219,7 +331,7 @@ fun ScannerOverlay(
             size = Size(cornerWidth, cornerLength)
         )
         
-        // Top-right corner
+        // Top-right
         drawRect(
             color = AppColors.ScannerCorner,
             topLeft = Offset(frameRight - cornerLength, frameTop),
@@ -231,7 +343,7 @@ fun ScannerOverlay(
             size = Size(cornerWidth, cornerLength)
         )
         
-        // Bottom-left corner
+        // Bottom-left
         drawRect(
             color = AppColors.ScannerCorner,
             topLeft = Offset(frameLeft, frameBottom - cornerWidth),
@@ -243,7 +355,7 @@ fun ScannerOverlay(
             size = Size(cornerWidth, cornerLength)
         )
         
-        // Bottom-right corner
+        // Bottom-right
         drawRect(
             color = AppColors.ScannerCorner,
             topLeft = Offset(frameRight - cornerLength, frameBottom - cornerWidth),

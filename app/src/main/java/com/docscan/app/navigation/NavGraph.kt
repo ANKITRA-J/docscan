@@ -5,12 +5,12 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
-import com.docscan.app.model.ScanDocument
 import com.docscan.app.ui.crop.CropEditorScreen
 import com.docscan.app.ui.enhance.EnhanceModesScreen
 import com.docscan.app.ui.export.ExportScreen
 import com.docscan.app.ui.home.HomeScreen
 import com.docscan.app.ui.scanner.ScannerScreen
+import com.docscan.app.viewmodel.ScanViewModel
 
 /**
  * Navigation graph for the Document Scanner app
@@ -19,8 +19,7 @@ import com.docscan.app.ui.scanner.ScannerScreen
 @Composable
 fun NavGraph(
     navController: NavHostController,
-    documents: List<ScanDocument>,
-    onDocumentClick: (ScanDocument) -> Unit,
+    viewModel: ScanViewModel,
     startDestination: String = Screen.Home.route
 ) {
     NavHost(
@@ -30,12 +29,13 @@ fun NavGraph(
         // Home / Recent Scans screen
         composable(Screen.Home.route) {
             HomeScreen(
-                documents = documents,
+                documents = viewModel.documents.value,
                 onScanClick = {
+                    viewModel.reset()
                     navController.navigate(Screen.Scanner.route)
                 },
                 onDocumentClick = { document ->
-                    onDocumentClick(document)
+                    navController.navigate(Screen.Export.createRoute(document.id))
                 }
             )
         }
@@ -46,7 +46,8 @@ fun NavGraph(
                 onClose = {
                     navController.popBackStack()
                 },
-                onCapture = {
+                onImageCaptured = { file ->
+                    viewModel.setCapturedImage(file)
                     navController.navigate(Screen.CropEditor.route)
                 }
             )
@@ -55,11 +56,12 @@ fun NavGraph(
         // Manual crop editor screen
         composable(Screen.CropEditor.route) {
             CropEditorScreen(
-                imageUri = null, // TODO: Pass captured image URI
+                imageFile = viewModel.capturedImageFile.value,
                 onClose = {
                     navController.popBackStack()
                 },
-                onConfirm = {
+                onConfirm = { topLeft, topRight, bottomLeft, bottomRight ->
+                    viewModel.applyCrop(topLeft, topRight, bottomLeft, bottomRight)
                     navController.navigate(Screen.EnhanceModes.route)
                 }
             )
@@ -68,18 +70,18 @@ fun NavGraph(
         // Enhance modes UI screen
         composable(Screen.EnhanceModes.route) {
             EnhanceModesScreen(
-                imageUri = null, // TODO: Pass cropped image URI
-                currentMode = com.docscan.app.model.EnhanceMode.Original,
+                croppedBitmap = viewModel.croppedBitmap.value,
+                currentMode = viewModel.currentEnhanceMode.value,
                 onModeSelected = { mode ->
-                    // TODO: Save enhancement mode
+                    viewModel.applyEnhancement(mode)
                 },
                 onClose = {
                     navController.popBackStack()
                 },
                 onConfirm = {
-                    // TODO: Create document with enhanced image
-                    // For now, navigate to export with a dummy ID
-                    navController.navigate(Screen.Export.createRoute("dummy_id"))
+                    // Create a temporary document ID for export
+                    val docId = "temp_${System.currentTimeMillis()}"
+                    navController.navigate(Screen.Export.createRoute(docId))
                 }
             )
         }
@@ -92,18 +94,11 @@ fun NavGraph(
             val documentId = backStackEntry.arguments?.getString("documentId") ?: ""
             ExportScreen(
                 documentId = documentId,
-                imageUri = null, // TODO: Pass document image URI
+                viewModel = viewModel,
                 onClose = {
                     navController.popBackStack(Screen.Home.route, inclusive = false)
                 },
-                onExportPdf = {
-                    // TODO: Implement PDF export
-                    // After export, navigate back to home
-                    navController.popBackStack(Screen.Home.route, inclusive = false)
-                },
-                onExportImage = {
-                    // TODO: Implement image export
-                    // After export, navigate back to home
+                onExportComplete = {
                     navController.popBackStack(Screen.Home.route, inclusive = false)
                 }
             )

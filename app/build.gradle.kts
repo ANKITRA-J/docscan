@@ -71,13 +71,16 @@ dependencies {
     // Image loading
     implementation("io.coil-kt:coil-compose:2.5.0")
     
-    // CameraX (for camera preview - comment indicates integration point)
-    // implementation("androidx.camera:camera-camera2:1.3.1")
-    // implementation("androidx.camera:camera-lifecycle:1.3.1")
-    // implementation("androidx.camera:camera-view:1.3.1")
+    // CameraX for camera preview
+    implementation("androidx.camera:camera-camera2:1.3.1")
+    implementation("androidx.camera:camera-lifecycle:1.3.1")
+    implementation("androidx.camera:camera-view:1.3.1")
     
-    // PDF generation (comment indicates integration point)
-    // implementation("com.itextpdf:itext7-core:8.0.2")
+    // PDF generation
+    implementation("com.itextpdf:itext7-core:8.0.2")
+    
+    // Permissions handling
+    implementation("com.google.accompanist:accompanist-permissions:0.32.0")
     
     // Testing
     testImplementation("junit:junit:4.13.2")

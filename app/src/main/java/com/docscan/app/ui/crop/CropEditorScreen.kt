@@ -1,11 +1,12 @@
+@file:OptIn(ExperimentalMaterial3Api::class)
+
 package com.docscan.app.ui.crop
 
+import android.graphics.BitmapFactory
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
@@ -19,34 +20,32 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
-import com.docscan.app.R
 import com.docscan.app.theme.AppColors
+import java.io.File
 
 /**
- * Manual crop editor screen
- * Allows dragging corners to adjust crop area
- * 
- * TODO: Integrate image processing
- * - Accept captured image bitmap
- * - Implement perspective transform on crop
- * - Apply crop and pass to enhance screen
+ * Manual crop editor screen with actual image display
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CropEditorScreen(
-    imageUri: String? = null, // TODO: Replace with actual image data
+    imageFile: File?,
     onClose: () -> Unit,
-    onConfirm: () -> Unit,
+    onConfirm: (Offset, Offset, Offset, Offset) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val screenWidth = LocalConfiguration.current.screenWidthDp.dp
-    val imageWidth = screenWidth - 32.dp
+    
+    // Load bitmap from file
+    val bitmap = remember(imageFile) {
+        imageFile?.let { BitmapFactory.decodeFile(it.absolutePath) }
+    }
     
     // Crop corners state (normalized 0-1 coordinates)
     val corners = remember {
@@ -105,43 +104,42 @@ fun CropEditorScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .aspectRatio(3f / 4f) // Document aspect ratio
+                        .aspectRatio(3f / 4f)
                         .background(Color.Gray.copy(alpha = 0.1f))
                         .clip(RoundedCornerShape(8.dp))
                 ) {
-                    if (imageUri != null) {
-                        AsyncImage(
-                            model = imageUri,
+                    if (bitmap != null) {
+                        androidx.compose.foundation.Image(
+                            bitmap = bitmap.asImageBitmap(),
                             contentDescription = "Scanned Document",
                             contentScale = ContentScale.Fit,
                             modifier = Modifier.fillMaxSize()
                         )
+                        
+                        // Crop overlay with draggable corners
+                        CropOverlay(
+                            corners = corners.value,
+                            onCornerDrag = { cornerType, offset ->
+                                draggedCorner = cornerType
+                                corners.value = corners.value.adjustCorner(cornerType, offset)
+                            },
+                            onDragEnd = {
+                                draggedCorner = null
+                            },
+                            modifier = Modifier.fillMaxSize()
+                        )
                     } else {
-                        // Placeholder
                         Box(
                             modifier = Modifier.fillMaxSize(),
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = "Image Preview\n(Integrate image here)",
+                                text = "No image captured",
                                 style = MaterialTheme.typography.bodyLarge,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
-                    
-                    // Crop overlay with draggable corners
-                    CropOverlay(
-                        corners = corners.value,
-                        onCornerDrag = { cornerType, offset ->
-                            draggedCorner = cornerType
-                            corners.value = corners.value.adjustCorner(cornerType, offset)
-                        },
-                        onDragEnd = {
-                            draggedCorner = null
-                        },
-                        modifier = Modifier.fillMaxSize()
-                    )
                 }
             }
             
@@ -158,7 +156,15 @@ fun CropEditorScreen(
             
             // Confirm button
             Button(
-                onClick = onConfirm,
+                onClick = {
+                    onConfirm(
+                        corners.value.topLeft,
+                        corners.value.topRight,
+                        corners.value.bottomLeft,
+                        corners.value.bottomRight
+                    )
+                },
+                enabled = bitmap != null,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.primary
                 ),
@@ -184,9 +190,6 @@ fun CropEditorScreen(
     }
 }
 
-/**
- * Data class for quadrangle corners
- */
 data class QuadCorners(
     val topLeft: Offset,
     val topRight: Offset,
@@ -207,9 +210,6 @@ enum class CornerType {
     TopLeft, TopRight, BottomLeft, BottomRight
 }
 
-/**
- * Crop overlay with draggable corner handles
- */
 @Composable
 fun CropOverlay(
     corners: QuadCorners,
@@ -224,7 +224,10 @@ fun CropOverlay(
             modifier = Modifier
                 .fillMaxSize()
                 .onGloballyPositioned { coordinates ->
-                    canvasSize = Size(coordinates.size.width.toFloat(), coordinates.size.height.toFloat())
+                    canvasSize = Size(
+                        coordinates.size.width.toFloat(),
+                        coordinates.size.height.toFloat()
+                    )
                 }
         ) {
             val topLeftPx = Offset(
@@ -244,7 +247,6 @@ fun CropOverlay(
                 corners.bottomRight.y * size.height
             )
             
-            // Draw crop frame
             val path = Path().apply {
                 moveTo(topLeftPx.x, topLeftPx.y)
                 lineTo(topRightPx.x, topRightPx.y)
@@ -253,57 +255,33 @@ fun CropOverlay(
                 close()
             }
             
-            // Draw semi-transparent overlay outside crop area
             drawRect(
                 color = AppColors.ScannerOverlay,
                 size = size
             )
             
-            // Draw crop area border
             drawPath(
                 path = path,
                 color = AppColors.ScannerFrame,
                 style = androidx.compose.ui.graphics.drawscope.Stroke(width = 3.dp.toPx())
             )
             
-            // Draw corner handles
             val cornerRadius = 16.dp.toPx()
-            drawCircle(
-                color = AppColors.ScannerCorner,
-                radius = cornerRadius,
-                center = topLeftPx
-            )
-            drawCircle(
-                color = AppColors.ScannerCorner,
-                radius = cornerRadius,
-                center = topRightPx
-            )
-            drawCircle(
-                color = AppColors.ScannerCorner,
-                radius = cornerRadius,
-                center = bottomLeftPx
-            )
-            drawCircle(
-                color = AppColors.ScannerCorner,
-                radius = cornerRadius,
-                center = bottomRightPx
-            )
+            drawCircle(color = AppColors.ScannerCorner, radius = cornerRadius, center = topLeftPx)
+            drawCircle(color = AppColors.ScannerCorner, radius = cornerRadius, center = topRightPx)
+            drawCircle(color = AppColors.ScannerCorner, radius = cornerRadius, center = bottomLeftPx)
+            drawCircle(color = AppColors.ScannerCorner, radius = cornerRadius, center = bottomRightPx)
         }
         
-        // Gesture detector overlay
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .pointerInput(corners, canvasSize) {
                     detectDragGestures(
                         onDragEnd = { onDragEnd() }
-                    ) { change, dragAmount ->
+                    ) { change, _ ->
                         if (canvasSize.width > 0 && canvasSize.height > 0) {
-                            val corner = findNearestCorner(
-                                change.position,
-                                corners,
-                                canvasSize
-                            )
+                            val corner = findNearestCorner(change.position, corners, canvasSize)
                             if (corner != null) {
                                 val newOffset = Offset(
                                     (change.position.x / canvasSize.width).coerceIn(0.05f, 0.95f),
@@ -318,9 +296,6 @@ fun CropOverlay(
     }
 }
 
-/**
- * Find the nearest corner to a touch point
- */
 fun findNearestCorner(
     touchPoint: Offset,
     corners: QuadCorners,
@@ -344,4 +319,3 @@ fun findNearestCorner(
         null
     }
 }
-

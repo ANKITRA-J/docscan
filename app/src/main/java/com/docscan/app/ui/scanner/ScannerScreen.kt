@@ -88,13 +88,6 @@ fun ScannerScreen(
                 isCapturing = isCapturing,
                 modifier = Modifier.fillMaxSize()
             )
-            
-            // Scanner overlay
-            ScannerOverlay(
-                frameWidth = frameWidth,
-                frameHeight = frameHeight,
-                modifier = Modifier.fillMaxSize()
-            )
         } else {
             // Permission denied state
             Box(

@@ -71,6 +71,9 @@ dependencies {
     // Image loading
     implementation("io.coil-kt:coil-compose:2.5.0")
     
+    // ExifInterface for image orientation
+    implementation("androidx.exifinterface:exifinterface:1.3.7")
+    
     // CameraX for camera preview
     implementation("androidx.camera:camera-camera2:1.3.1")
     implementation("androidx.camera:camera-lifecycle:1.3.1")

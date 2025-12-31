@@ -43,9 +43,17 @@ fun CropEditorScreen(
 ) {
     val screenWidth = LocalConfiguration.current.screenWidthDp.dp
     
-    // Load bitmap from file
+    // Load bitmap from file with proper rotation
     val bitmap = remember(imageFile) {
-        imageFile?.let { BitmapFactory.decodeFile(it.absolutePath) }
+        imageFile?.let { 
+            val bmp = BitmapFactory.decodeFile(it.absolutePath)
+            val rotation = com.docscan.app.util.FileUtils.getImageRotation(it)
+            if (rotation != 0) {
+                com.docscan.app.util.FileUtils.rotateBitmap(bmp, rotation)
+            } else {
+                bmp
+            }
+        }
     }
     
     // Crop corners state (normalized 0-1 coordinates)
@@ -233,6 +241,8 @@ fun CropOverlay(
                     )
                 }
         ) {
+            if (canvasSize.width == 0f || canvasSize.height == 0f) return@Canvas
+            
             val topLeftPx = Offset(
                 corners.topLeft.x * size.width,
                 corners.topLeft.y * size.height
@@ -258,51 +268,49 @@ fun CropOverlay(
                 close()
             }
             
-            drawRect(
-                color = AppColors.ScannerOverlay,
-                size = size
-            )
-            
+            // Draw crop area border (no overlay to keep image bright)
             drawPath(
                 path = path,
-                color = AppColors.ScannerFrame,
-                style = androidx.compose.ui.graphics.drawscope.Stroke(width = 3.dp.toPx())
+                color = Color.White,
+                style = androidx.compose.ui.graphics.drawscope.Stroke(width = 4.dp.toPx())
             )
             
-            val cornerRadius = 20.dp.toPx()
-            val activeRadius = 24.dp.toPx()
+            // Draw corner handles - larger and more visible
+            val cornerRadius = 24.dp.toPx()
+            val activeRadius = 28.dp.toPx()
             
-            // Draw corners with larger size when active
-            drawCircle(
-                color = AppColors.ScannerCorner,
-                radius = if (activeCorner == CornerType.TopLeft) activeRadius else cornerRadius,
-                center = topLeftPx
-            )
-            drawCircle(
-                color = AppColors.ScannerCorner,
-                radius = if (activeCorner == CornerType.TopRight) activeRadius else cornerRadius,
-                center = topRightPx
-            )
-            drawCircle(
-                color = AppColors.ScannerCorner,
-                radius = if (activeCorner == CornerType.BottomLeft) activeRadius else cornerRadius,
-                center = bottomLeftPx
-            )
-            drawCircle(
-                color = AppColors.ScannerCorner,
-                radius = if (activeCorner == CornerType.BottomRight) activeRadius else cornerRadius,
-                center = bottomRightPx
-            )
+            // Draw white circles with blue border
+            listOf(
+                topLeftPx to (activeCorner == CornerType.TopLeft),
+                topRightPx to (activeCorner == CornerType.TopRight),
+                bottomLeftPx to (activeCorner == CornerType.BottomLeft),
+                bottomRightPx to (activeCorner == CornerType.BottomRight)
+            ).forEach { (center, isActive) ->
+                val radius = if (isActive) activeRadius else cornerRadius
+                // White fill
+                drawCircle(
+                    color = Color.White,
+                    radius = radius,
+                    center = center
+                )
+                // Blue border
+                drawCircle(
+                    color = AppColors.ScannerCorner,
+                    radius = radius,
+                    center = center,
+                    style = androidx.compose.ui.graphics.drawscope.Stroke(width = 4.dp.toPx())
+                )
+            }
         }
         
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .pointerInput(corners, canvasSize) {
+                .pointerInput(Unit) {
                     detectDragGestures(
                         onDragStart = { offset ->
                             if (canvasSize.width > 0 && canvasSize.height > 0) {
-                                activeCorner = findNearestCorner(offset, corners, canvasSize)
+                                activeCorner = findNearestCorner(offset, corners, canvasSize, threshold = 150f)
                             }
                         },
                         onDragEnd = {
@@ -314,11 +322,10 @@ fun CropOverlay(
                             onDragEnd()
                         }
                     ) { change, _ ->
-                        change.consume()
                         if (canvasSize.width > 0 && canvasSize.height > 0 && activeCorner != null) {
                             val newOffset = Offset(
-                                (change.position.x / canvasSize.width).coerceIn(0.05f, 0.95f),
-                                (change.position.y / canvasSize.height).coerceIn(0.05f, 0.95f)
+                                (change.position.x / canvasSize.width).coerceIn(0.0f, 1.0f),
+                                (change.position.y / canvasSize.height).coerceIn(0.0f, 1.0f)
                             )
                             onCornerDrag(activeCorner!!, newOffset)
                         }

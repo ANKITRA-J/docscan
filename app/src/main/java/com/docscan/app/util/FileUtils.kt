@@ -2,8 +2,10 @@ package com.docscan.app.util
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.Matrix
 import android.net.Uri
 import androidx.core.content.FileProvider
+import androidx.exifinterface.media.ExifInterface
 import java.io.File
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
@@ -51,5 +53,33 @@ object FileUtils {
             e.printStackTrace()
             false
         }
+    }
+    
+    /**
+     * Get the correct rotation for an image based on EXIF data
+     */
+    fun getImageRotation(file: File): Int {
+        return try {
+            val exif = ExifInterface(file.absolutePath)
+            when (exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)) {
+                ExifInterface.ORIENTATION_ROTATE_90 -> 90
+                ExifInterface.ORIENTATION_ROTATE_180 -> 180
+                ExifInterface.ORIENTATION_ROTATE_270 -> 270
+                else -> 0
+            }
+        } catch (e: Exception) {
+            0
+        }
+    }
+    
+    /**
+     * Rotate bitmap based on EXIF orientation
+     */
+    fun rotateBitmap(bitmap: Bitmap, degrees: Int): Bitmap {
+        if (degrees == 0) return bitmap
+        
+        val matrix = Matrix()
+        matrix.postRotate(degrees.toFloat())
+        return Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
     }
 }

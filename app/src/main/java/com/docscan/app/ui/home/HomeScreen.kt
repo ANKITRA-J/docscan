@@ -2,6 +2,9 @@
 
 package com.docscan.app.ui.home
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -11,6 +14,8 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Photo
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -43,6 +48,18 @@ fun HomeScreen(
     modifier: Modifier = Modifier
 ) {
     val screenWidth = LocalConfiguration.current.screenWidthDp.dp
+    var showMenu by remember { mutableStateOf(false) }
+    
+    // Gallery picker launcher
+    val galleryLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        uri?.let {
+            // TODO: Handle gallery image selection
+            // For now, just show a toast
+            // In a full implementation, you would copy the image and navigate to crop screen
+        }
+    }
     
     Scaffold(
         topBar = {
@@ -62,22 +79,50 @@ fun HomeScreen(
             )
         },
         floatingActionButton = {
-            FloatingActionButton(
-                onClick = onScanClick,
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
-                modifier = Modifier
-                    .size(56.dp)
-            .shadow(
-                elevation = 8.dp,
-                shape = RoundedCornerShape(28.dp)
-            )
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Add,
-                    contentDescription = "Scan Document",
-                    modifier = Modifier.size(24.dp)
-                )
+            Box {
+                FloatingActionButton(
+                    onClick = { showMenu = true },
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                    modifier = Modifier
+                        .size(56.dp)
+                        .shadow(
+                            elevation = 8.dp,
+                            shape = RoundedCornerShape(28.dp)
+                        )
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = "Add Document",
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+                
+                DropdownMenu(
+                    expanded = showMenu,
+                    onDismissRequest = { showMenu = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Scan with Camera") },
+                        onClick = {
+                            showMenu = false
+                            onScanClick()
+                        },
+                        leadingIcon = {
+                            Icon(Icons.Default.CameraAlt, contentDescription = null)
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Choose from Gallery") },
+                        onClick = {
+                            showMenu = false
+                            galleryLauncher.launch("image/*")
+                        },
+                        leadingIcon = {
+                            Icon(Icons.Default.Photo, contentDescription = null)
+                        }
+                    )
+                }
             }
         },
         containerColor = MaterialTheme.colorScheme.background,

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Document Scanner</string>
+    <string name="recent_scans">Recent Scans</string>
+    <string name="no_scans">No scans yet</string>
+    <string name="tap_to_scan">Tap to scan your first document</string>
+    <string name="scan_button">Scan</string>
+    <string name="crop_button">Crop</string>
+    <string name="enhance_button">Enhance</string>
+    <string name="export_button">Export</string>
+    <string name="save_pdf">Save as PDF</string>
+    <string name="save_image">Save as Image</string>
+    <string name="enhance_mode_original">Original</string>
+    <string name="enhance_mode_grayscale">Grayscale</string>
+    <string name="enhance_mode_color">Color</string>
+    <string name="enhance_mode_black_white">Black &amp; White</string>
+    <string name="enhance_mode_magic">Magic</string>
+</resources>
+

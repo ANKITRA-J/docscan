@@ -37,6 +37,14 @@ class ScanViewModel : ViewModel() {
     var currentDocumentId = mutableStateOf<String?>(null)
         private set
     
+    // List of pages for current document (enhanced bitmaps)
+    var currentDocumentPages = mutableStateOf<List<Bitmap>>(emptyList())
+        private set
+    
+    // Saved page file paths
+    var currentDocumentPagePaths = mutableStateOf<List<String>>(emptyList())
+        private set
+    
     fun setCapturedImage(file: File) {
         capturedImageFile.value = file
     }
@@ -77,6 +85,15 @@ class ScanViewModel : ViewModel() {
         enhancedBitmap.value = enhanced
     }
     
+    fun addPageToCurrentDocument() {
+        val enhanced = enhancedBitmap.value ?: return
+        currentDocumentPages.value = currentDocumentPages.value + enhanced
+    }
+    
+    fun savePagePath(path: String) {
+        currentDocumentPagePaths.value = currentDocumentPagePaths.value + path
+    }
+    
     fun createDocument(name: String, thumbnailPath: String): String {
         val documentId = UUID.randomUUID().toString()
         val document = ScanDocument(
@@ -84,8 +101,9 @@ class ScanViewModel : ViewModel() {
             name = name,
             thumbnailPath = thumbnailPath,
             createdAt = Date(),
-            pageCount = 1,
-            enhanceMode = currentEnhanceMode.value
+            pageCount = currentDocumentPages.value.size,
+            enhanceMode = currentEnhanceMode.value,
+            pagePaths = currentDocumentPagePaths.value
         )
         
         documents.value = documents.value + document
@@ -103,9 +121,25 @@ class ScanViewModel : ViewModel() {
         enhancedBitmap.value = null
         currentEnhanceMode.value = EnhanceMode.Original
         currentDocumentId.value = null
+        currentDocumentPages.value = emptyList()
+        currentDocumentPagePaths.value = emptyList()
+    }
+    
+    fun resetCurrentPage() {
+        capturedImageFile.value = null
+        croppedBitmap.value = null
+        enhancedBitmap.value = null
     }
     
     fun getFinalBitmap(): Bitmap? {
         return enhancedBitmap.value
+    }
+    
+    fun getAllPages(): List<Bitmap> {
+        return currentDocumentPages.value
+    }
+    
+    fun getPageCount(): Int {
+        return currentDocumentPages.value.size
     }
 }

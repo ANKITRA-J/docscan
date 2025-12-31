@@ -28,8 +28,10 @@ import com.docscan.app.model.EnhanceMode
 fun EnhanceModesScreen(
     enhancedBitmap: Bitmap?,
     currentMode: EnhanceMode,
+    pageCount: Int,
     onModeSelected: (EnhanceMode) -> Unit,
     onClose: () -> Unit,
+    onScanMore: () -> Unit,
     onConfirm: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -143,33 +145,73 @@ fun EnhanceModesScreen(
                 }
             }
             
-            Button(
-                onClick = {
-                    onModeSelected(selectedMode)
-                    onConfirm()
-                },
-                enabled = enhancedBitmap != null,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary
-                ),
-                shape = RoundedCornerShape(12.dp),
+            // Page count indicator
+            if (pageCount > 0) {
+                Text(
+                    text = "${pageCount + 1} page${if (pageCount > 0) "s" else ""} scanned",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                        .padding(bottom = 8.dp)
+                )
+            }
+            
+            // Buttons row
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(56.dp)
                     .padding(horizontal = 16.dp)
-                    .padding(bottom = 32.dp)
+                    .padding(bottom = 32.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Text(
-                    text = "Next",
-                    style = MaterialTheme.typography.labelLarge,
-                    fontSize = 16.sp
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Icon(
-                    imageVector = Icons.Default.Check,
-                    contentDescription = null,
-                    modifier = Modifier.size(20.dp)
-                )
+                // Scan More button
+                OutlinedButton(
+                    onClick = {
+                        onModeSelected(selectedMode)
+                        onScanMore()
+                    },
+                    enabled = enhancedBitmap != null,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(56.dp)
+                ) {
+                    Text(
+                        text = "Scan More",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontSize = 16.sp
+                    )
+                }
+                
+                // Done button
+                Button(
+                    onClick = {
+                        onModeSelected(selectedMode)
+                        onConfirm()
+                    },
+                    enabled = enhancedBitmap != null,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(56.dp)
+                ) {
+                    Text(
+                        text = "Done",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontSize = 16.sp
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Icon(
+                        imageVector = Icons.Default.Check,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
             }
         }
     }

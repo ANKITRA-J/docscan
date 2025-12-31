@@ -50,7 +50,7 @@ import java.io.File
 fun HomeScreen(
     documents: List<ScanDocument>,
     onScanClick: () -> Unit,
-    onGalleryImageSelected: (File) -> Unit,
+    onGalleryImagesSelected: (List<File>) -> Unit,
     onDocumentClick: (ScanDocument) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -58,27 +58,32 @@ fun HomeScreen(
     val screenWidth = LocalConfiguration.current.screenWidthDp.dp
     var showMenu by remember { mutableStateOf(false) }
     
-    // Gallery picker launcher
+    // Gallery picker launcher - MULTIPLE IMAGES
     val galleryLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri: Uri? ->
-        uri?.let {
+        contract = ActivityResultContracts.GetMultipleContents()
+    ) { uris: List<Uri> ->
+        if (uris.isNotEmpty()) {
             try {
-                // Copy the image from gallery to app's internal storage
-                val inputStream = context.contentResolver.openInputStream(uri)
-                val file = com.docscan.app.util.FileUtils.createImageFile(context)
+                val files = mutableListOf<File>()
                 
-                inputStream?.use { input ->
-                    file.outputStream().use { output ->
-                        input.copyTo(output)
+                // Copy all selected images
+                uris.forEach { uri ->
+                    val inputStream = context.contentResolver.openInputStream(uri)
+                    val file = com.docscan.app.util.FileUtils.createImageFile(context)
+                    
+                    inputStream?.use { input ->
+                        file.outputStream().use { output ->
+                            input.copyTo(output)
+                        }
                     }
+                    files.add(file)
                 }
                 
-                // Pass the file to the callback
-                onGalleryImageSelected(file)
+                // Pass all files to the callback
+                onGalleryImagesSelected(files)
             } catch (e: Exception) {
                 e.printStackTrace()
-                android.widget.Toast.makeText(context, "Failed to load image", android.widget.Toast.LENGTH_SHORT).show()
+                android.widget.Toast.makeText(context, "Failed to load images", android.widget.Toast.LENGTH_SHORT).show()
             }
         }
     }

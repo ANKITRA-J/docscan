@@ -10,9 +10,9 @@ import java.util.*
 
 object PdfGenerator {
     
-    fun createPdfFromBitmap(
+    fun createPdfFromBitmaps(
         context: Context,
-        bitmap: Bitmap,
+        bitmaps: List<Bitmap>,
         fileName: String? = null
     ): File? {
         return try {
@@ -27,11 +27,14 @@ object PdfGenerator {
             val pdfFile = File(pdfDir, pdfFileName)
             
             val pdfDocument = PdfDocument()
-            val pageInfo = PdfDocument.PageInfo.Builder(bitmap.width, bitmap.height, 1).create()
-            val page = pdfDocument.startPage(pageInfo)
             
-            page.canvas.drawBitmap(bitmap, 0f, 0f, null)
-            pdfDocument.finishPage(page)
+            bitmaps.forEachIndexed { index, bitmap ->
+                val pageInfo = PdfDocument.PageInfo.Builder(bitmap.width, bitmap.height, index + 1).create()
+                val page = pdfDocument.startPage(pageInfo)
+                
+                page.canvas.drawBitmap(bitmap, 0f, 0f, null)
+                pdfDocument.finishPage(page)
+            }
             
             FileOutputStream(pdfFile).use { outputStream ->
                 pdfDocument.writeTo(outputStream)
@@ -43,6 +46,14 @@ object PdfGenerator {
             e.printStackTrace()
             null
         }
+    }
+    
+    fun createPdfFromBitmap(
+        context: Context,
+        bitmap: Bitmap,
+        fileName: String? = null
+    ): File? {
+        return createPdfFromBitmaps(context, listOf(bitmap), fileName)
     }
     
     fun saveImageAsJpeg(

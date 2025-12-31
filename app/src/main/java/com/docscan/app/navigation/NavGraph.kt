@@ -34,10 +34,15 @@ fun NavGraph(
                     viewModel.reset()
                     navController.navigate(Screen.Scanner.route)
                 },
-                onGalleryImageSelected = { file: java.io.File ->
+                onGalleryImagesSelected = { files: List<java.io.File> ->
                     viewModel.reset()
-                    viewModel.setCapturedImage(file)
-                    navController.navigate(Screen.CropEditor.route)
+                    if (files.isNotEmpty()) {
+                        // Process first image
+                        viewModel.setCapturedImage(files[0])
+                        navController.navigate(Screen.CropEditor.route)
+                        
+                        // TODO: Queue remaining images for processing
+                    }
                 },
                 onDocumentClick = { document ->
                     navController.navigate(Screen.Export.createRoute(document.id))
@@ -77,14 +82,26 @@ fun NavGraph(
             EnhanceModesScreen(
                 enhancedBitmap = viewModel.enhancedBitmap.value,
                 currentMode = viewModel.currentEnhanceMode.value,
+                pageCount = viewModel.getPageCount(),
                 onModeSelected = { mode ->
                     viewModel.applyEnhancement(mode)
                 },
                 onClose = {
                     navController.popBackStack()
                 },
+                onScanMore = {
+                    // Save current page
+                    viewModel.addPageToCurrentDocument()
+                    viewModel.resetCurrentPage()
+                    // Go back to scanner
+                    navController.navigate(Screen.Scanner.route) {
+                        popUpTo(Screen.Home.route)
+                    }
+                },
                 onConfirm = {
-                    // Create a temporary document ID for export
+                    // Save current page
+                    viewModel.addPageToCurrentDocument()
+                    // Navigate to export
                     val docId = "temp_${System.currentTimeMillis()}"
                     navController.navigate(Screen.Export.createRoute(docId))
                 }

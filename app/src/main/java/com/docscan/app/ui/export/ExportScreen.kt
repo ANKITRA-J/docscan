@@ -49,6 +49,8 @@ fun ExportScreen(
     var isExporting by remember { mutableStateOf(false) }
     
     val finalBitmap = viewModel.getFinalBitmap()
+    val allPages = viewModel.getAllPages()
+    val pageCount = allPages.size
     
     Box(
         modifier = modifier
@@ -130,8 +132,20 @@ fun ExportScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp)
-                    .padding(bottom = 16.dp)
+                    .padding(bottom = 8.dp)
             )
+            
+            if (pageCount > 0) {
+                Text(
+                    text = "$pageCount page${if (pageCount > 1) "s" else ""}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                        .padding(bottom = 16.dp)
+                )
+            }
             
             Column(
                 modifier = Modifier
@@ -141,21 +155,21 @@ fun ExportScreen(
             ) {
                 ExportOptionCard(
                     title = stringResource(R.string.save_pdf),
-                    description = "Export as PDF document",
+                    description = if (pageCount > 1) "Export $pageCount pages as PDF" else "Export as PDF document",
                     icon = Icons.Default.PictureAsPdf,
                     onClick = {
-                        if (finalBitmap != null && !isExporting) {
+                        if (allPages.isNotEmpty() && !isExporting) {
                             isExporting = true
                             scope.launch {
                                 val pdfFile = withContext(Dispatchers.IO) {
-                                    PdfGenerator.createPdfFromBitmap(context, finalBitmap)
+                                    PdfGenerator.createPdfFromBitmaps(context, allPages)
                                 }
                                 
                                 isExporting = false
                                 
                                 if (pdfFile != null) {
-                                    // Create thumbnail and save document
-                                    val thumbnail = ImageProcessor.createThumbnail(finalBitmap)
+                                    // Create thumbnail from first page
+                                    val thumbnail = ImageProcessor.createThumbnail(allPages.first())
                                     val thumbnailFile = FileUtils.createImageFile(context)
                                     FileUtils.saveBitmap(thumbnail, thumbnailFile)
                                     

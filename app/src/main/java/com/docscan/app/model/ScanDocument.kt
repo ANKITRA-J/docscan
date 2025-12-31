@@ -11,7 +11,8 @@ data class ScanDocument(
     val thumbnailPath: String? = null,
     val createdAt: Date = Date(),
     val pageCount: Int = 1,
-    val enhanceMode: EnhanceMode = EnhanceMode.Original
+    val enhanceMode: EnhanceMode = EnhanceMode.Original,
+    val pagePaths: List<String> = emptyList() // Paths to all page images
 )
 
 /**

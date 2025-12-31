@@ -80,8 +80,7 @@ fun ExportScreen(
                     .padding(16.dp)
                     .shadow(
                         elevation = 4.dp,
-                        shape = RoundedCornerShape(12.dp),
-                        spotColor = AppColors.Shadow
+                        shape = RoundedCornerShape(12.dp)
                     ),
                 shape = RoundedCornerShape(12.dp),
                 colors = CardDefaults.cardColors(
@@ -174,8 +173,7 @@ fun ExportOptionCard(
             .fillMaxWidth()
             .shadow(
                 elevation = 2.dp,
-                shape = RoundedCornerShape(12.dp),
-                spotColor = AppColors.Shadow
+                shape = RoundedCornerShape(12.dp)
             ),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(

@@ -91,8 +91,7 @@ fun EnhanceModesScreen(
                         .aspectRatio(3f / 4f)
                         .shadow(
                             elevation = 4.dp,
-                            shape = RoundedCornerShape(12.dp),
-                            spotColor = AppColors.Shadow
+                            shape = RoundedCornerShape(12.dp)
                         ),
                     shape = RoundedCornerShape(12.dp),
                     colors = CardDefaults.cardColors(

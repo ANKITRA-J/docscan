@@ -15,6 +15,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -24,7 +25,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
 import com.docscan.app.R
 import com.docscan.app.theme.AppColors
 
@@ -135,8 +135,7 @@ fun ScannerScreen(
                     .size(72.dp)
                     .shadow(
                         elevation = 8.dp,
-                        shape = CircleShape,
-                        spotColor = AppColors.Shadow
+                        shape = CircleShape
                     )
             ) {
                 Icon(

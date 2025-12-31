@@ -67,11 +67,10 @@ fun HomeScreen(
                 contentColor = MaterialTheme.colorScheme.onPrimary,
                 modifier = Modifier
                     .size(56.dp)
-                    .shadow(
-                        elevation = 8.dp,
-                        shape = RoundedCornerShape(28.dp),
-                        spotColor = AppColors.Shadow
-                    )
+            .shadow(
+                elevation = 8.dp,
+                shape = RoundedCornerShape(28.dp)
+            )
             ) {
                 Icon(
                     imageVector = Icons.Default.Add,
@@ -136,8 +135,7 @@ fun DocumentCard(
             .fillMaxWidth()
             .shadow(
                 elevation = 2.dp,
-                shape = RoundedCornerShape(12.dp),
-                spotColor = AppColors.Shadow
+                shape = RoundedCornerShape(12.dp)
             ),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(

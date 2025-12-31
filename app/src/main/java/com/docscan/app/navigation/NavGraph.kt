@@ -70,7 +70,7 @@ fun NavGraph(
         // Enhance modes UI screen
         composable(Screen.EnhanceModes.route) {
             EnhanceModesScreen(
-                croppedBitmap = viewModel.croppedBitmap.value,
+                enhancedBitmap = viewModel.enhancedBitmap.value,
                 currentMode = viewModel.currentEnhanceMode.value,
                 onModeSelected = { mode ->
                     viewModel.applyEnhancement(mode)

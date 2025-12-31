@@ -27,6 +27,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.docscan.app.theme.AppColors
 import java.io.File
 
@@ -143,7 +144,7 @@ fun CropEditorScreen(
                 }
             }
             
-            // Instructions
+            // Instructions and button
             Text(
                 text = "Drag corners to adjust crop area",
                 style = MaterialTheme.typography.bodyMedium,
@@ -151,10 +152,10 @@ fun CropEditorScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp)
-                    .padding(bottom = 24.dp)
+                    .padding(bottom = 16.dp)
             )
             
-            // Confirm button
+            // Next button
             Button(
                 onClick = {
                     onConfirm(
@@ -171,19 +172,20 @@ fun CropEditorScreen(
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(50.dp)
+                    .height(56.dp)
                     .padding(horizontal = 16.dp)
                     .padding(bottom = 32.dp)
             ) {
+                Text(
+                    text = "Next",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontSize = 16.sp
+                )
+                Spacer(modifier = Modifier.width(8.dp))
                 Icon(
                     imageVector = Icons.Default.Check,
                     contentDescription = null,
                     modifier = Modifier.size(20.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "Confirm Crop",
-                    style = MaterialTheme.typography.labelLarge
                 )
             }
         }
@@ -218,6 +220,7 @@ fun CropOverlay(
     modifier: Modifier = Modifier
 ) {
     var canvasSize by remember { mutableStateOf(Size(0f, 0f)) }
+    var activeCorner by remember { mutableStateOf<CornerType?>(null) }
     
     Box(modifier = modifier) {
         Canvas(
@@ -266,11 +269,30 @@ fun CropOverlay(
                 style = androidx.compose.ui.graphics.drawscope.Stroke(width = 3.dp.toPx())
             )
             
-            val cornerRadius = 16.dp.toPx()
-            drawCircle(color = AppColors.ScannerCorner, radius = cornerRadius, center = topLeftPx)
-            drawCircle(color = AppColors.ScannerCorner, radius = cornerRadius, center = topRightPx)
-            drawCircle(color = AppColors.ScannerCorner, radius = cornerRadius, center = bottomLeftPx)
-            drawCircle(color = AppColors.ScannerCorner, radius = cornerRadius, center = bottomRightPx)
+            val cornerRadius = 20.dp.toPx()
+            val activeRadius = 24.dp.toPx()
+            
+            // Draw corners with larger size when active
+            drawCircle(
+                color = AppColors.ScannerCorner,
+                radius = if (activeCorner == CornerType.TopLeft) activeRadius else cornerRadius,
+                center = topLeftPx
+            )
+            drawCircle(
+                color = AppColors.ScannerCorner,
+                radius = if (activeCorner == CornerType.TopRight) activeRadius else cornerRadius,
+                center = topRightPx
+            )
+            drawCircle(
+                color = AppColors.ScannerCorner,
+                radius = if (activeCorner == CornerType.BottomLeft) activeRadius else cornerRadius,
+                center = bottomLeftPx
+            )
+            drawCircle(
+                color = AppColors.ScannerCorner,
+                radius = if (activeCorner == CornerType.BottomRight) activeRadius else cornerRadius,
+                center = bottomRightPx
+            )
         }
         
         Box(
@@ -278,17 +300,27 @@ fun CropOverlay(
                 .fillMaxSize()
                 .pointerInput(corners, canvasSize) {
                     detectDragGestures(
-                        onDragEnd = { onDragEnd() }
-                    ) { change, _ ->
-                        if (canvasSize.width > 0 && canvasSize.height > 0) {
-                            val corner = findNearestCorner(change.position, corners, canvasSize)
-                            if (corner != null) {
-                                val newOffset = Offset(
-                                    (change.position.x / canvasSize.width).coerceIn(0.05f, 0.95f),
-                                    (change.position.y / canvasSize.height).coerceIn(0.05f, 0.95f)
-                                )
-                                onCornerDrag(corner, newOffset)
+                        onDragStart = { offset ->
+                            if (canvasSize.width > 0 && canvasSize.height > 0) {
+                                activeCorner = findNearestCorner(offset, corners, canvasSize)
                             }
+                        },
+                        onDragEnd = {
+                            activeCorner = null
+                            onDragEnd()
+                        },
+                        onDragCancel = {
+                            activeCorner = null
+                            onDragEnd()
+                        }
+                    ) { change, _ ->
+                        change.consume()
+                        if (canvasSize.width > 0 && canvasSize.height > 0 && activeCorner != null) {
+                            val newOffset = Offset(
+                                (change.position.x / canvasSize.width).coerceIn(0.05f, 0.95f),
+                                (change.position.y / canvasSize.height).coerceIn(0.05f, 0.95f)
+                            )
+                            onCornerDrag(activeCorner!!, newOffset)
                         }
                     }
                 }

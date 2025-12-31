@@ -21,11 +21,12 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.docscan.app.model.EnhanceMode
 
 @Composable
 fun EnhanceModesScreen(
-    croppedBitmap: Bitmap?,
+    enhancedBitmap: Bitmap?,
     currentMode: EnhanceMode,
     onModeSelected: (EnhanceMode) -> Unit,
     onClose: () -> Unit,
@@ -33,6 +34,11 @@ fun EnhanceModesScreen(
     modifier: Modifier = Modifier
 ) {
     var selectedMode by remember { mutableStateOf(currentMode) }
+    
+    // Update selected mode when currentMode changes
+    LaunchedEffect(currentMode) {
+        selectedMode = currentMode
+    }
     
     Box(
         modifier = modifier
@@ -82,9 +88,9 @@ fun EnhanceModesScreen(
                         containerColor = MaterialTheme.colorScheme.surface
                     )
                 ) {
-                    if (croppedBitmap != null) {
+                    if (enhancedBitmap != null) {
                         androidx.compose.foundation.Image(
-                            bitmap = croppedBitmap.asImageBitmap(),
+                            bitmap = enhancedBitmap.asImageBitmap(),
                             contentDescription = "Enhanced Document",
                             contentScale = ContentScale.Fit,
                             modifier = Modifier.fillMaxSize()
@@ -142,26 +148,27 @@ fun EnhanceModesScreen(
                     onModeSelected(selectedMode)
                     onConfirm()
                 },
-                enabled = croppedBitmap != null,
+                enabled = enhancedBitmap != null,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.primary
                 ),
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(50.dp)
+                    .height(56.dp)
                     .padding(horizontal = 16.dp)
                     .padding(bottom = 32.dp)
             ) {
+                Text(
+                    text = "Next",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontSize = 16.sp
+                )
+                Spacer(modifier = Modifier.width(8.dp))
                 Icon(
                     imageVector = Icons.Default.Check,
                     contentDescription = null,
                     modifier = Modifier.size(20.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "Apply Enhancement",
-                    style = MaterialTheme.typography.labelLarge
                 )
             }
         }

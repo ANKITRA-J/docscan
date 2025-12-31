@@ -146,20 +146,13 @@ fun ScannerScreen(
         
         // Bottom controls
         if (cameraPermissionState.status.isGranted) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
+            Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .padding(bottom = 48.dp)
+                    .padding(bottom = 48.dp),
+                contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = "Position document within frame",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Color.White,
-                    modifier = Modifier.padding(bottom = 24.dp)
-                )
-                
                 Button(
                     onClick = { isCapturing = true },
                     enabled = !isCapturing,

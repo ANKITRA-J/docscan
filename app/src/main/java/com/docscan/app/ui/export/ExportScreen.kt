@@ -245,7 +245,11 @@ fun ExportScreen(
                         .padding(16.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    CircularProgressIndicator()
+                    Text(
+                        text = "Exporting...",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.primary
+                    )
                 }
             }
         }

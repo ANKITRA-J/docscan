@@ -65,7 +65,10 @@ class ScanViewModel : ViewModel() {
     fun applyEnhancement(mode: EnhanceMode) {
         val cropped = croppedBitmap.value ?: return
         currentEnhanceMode.value = mode
-        enhancedBitmap.value = ImageProcessor.applyEnhancement(cropped, mode)
+        
+        // Apply enhancement in real-time
+        val enhanced = ImageProcessor.applyEnhancement(cropped, mode)
+        enhancedBitmap.value = enhanced
     }
     
     fun createDocument(name: String, thumbnailPath: String): String {

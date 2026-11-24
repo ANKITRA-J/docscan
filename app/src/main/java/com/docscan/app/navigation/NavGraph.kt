@@ -5,17 +5,19 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
-import com.docscan.app.ui.crop.CropEditorScreen
-import com.docscan.app.ui.enhance.EnhanceModesScreen
 import com.docscan.app.ui.export.ExportScreen
 import com.docscan.app.ui.home.HomeScreen
+import com.docscan.app.ui.review.DocumentReviewScreen
 import com.docscan.app.ui.scanner.ScannerScreen
 import com.docscan.app.viewmodel.ScanViewModel
 import java.io.File
 
 /**
  * Navigation graph for the Document Scanner app
- * Defines all routes and seamless multi-page transitions
+ * Streamlined flow:
+ * 1. Home -> Continuous Camera Scanner (click unlimited photos) or Gallery Import
+ * 2. Document Review Screen -> Swipe & crop each page, rotate, rearrange, batch filter
+ * 3. Export Screen -> Save to Downloads as formatted PDF or JPEG images, share
  */
 @Composable
 fun NavGraph(
@@ -38,8 +40,8 @@ fun NavGraph(
                 onGalleryImagesSelected = { files: List<File> ->
                     viewModel.reset()
                     if (files.isNotEmpty()) {
-                        viewModel.setImageQueue(files)
-                        navController.navigate(Screen.CropEditor.route)
+                        viewModel.setScannedPages(files)
+                        navController.navigate(Screen.Review.route)
                     }
                 },
                 onDocumentClick = { document ->
@@ -52,75 +54,35 @@ fun NavGraph(
             )
         }
 
-        // Scanner preview screen
+        // Continuous Multi-Page Camera Scanner
         composable(Screen.Scanner.route) {
             ScannerScreen(
                 onClose = {
                     navController.popBackStack()
                 },
-                onImageCaptured = { file ->
-                    viewModel.setCapturedImage(file)
-                    navController.navigate(Screen.CropEditor.route)
+                onFinishCapture = { files ->
+                    if (files.isNotEmpty()) {
+                        viewModel.setScannedPages(files)
+                        navController.navigate(Screen.Review.route) {
+                            popUpTo(Screen.Home.route)
+                        }
+                    } else {
+                        navController.popBackStack()
+                    }
                 }
             )
         }
 
-        // Manual crop editor screen
-        composable(Screen.CropEditor.route) {
-            CropEditorScreen(
-                imageFile = viewModel.capturedImageFile.value,
-                onClose = {
-                    navController.popBackStack()
-                },
-                onConfirm = { topLeft, topRight, bottomLeft, bottomRight ->
-                    viewModel.applyCrop(topLeft, topRight, bottomLeft, bottomRight)
-                    navController.navigate(Screen.EnhanceModes.route)
-                }
-            )
-        }
-
-        // Enhance modes screen
-        composable(Screen.EnhanceModes.route) {
-            EnhanceModesScreen(
-                enhancedBitmap = viewModel.enhancedBitmap.value,
-                currentMode = viewModel.currentEnhanceMode.value,
-                pageCount = viewModel.getPageCount(),
-                queueTotal = viewModel.queueTotalCount.value,
-                queueIndex = viewModel.queueCurrentIndex.value,
-                hasMoreInQueue = viewModel.hasMoreImagesInQueue(),
-                onModeSelected = { mode ->
-                    viewModel.applyEnhancement(mode)
-                },
-                onClose = {
-                    navController.popBackStack()
-                },
-                onScanMore = {
-                    // Commit current page to disk
-                    viewModel.addPageToCurrentDocument()
-                    viewModel.resetCurrentPage()
-                    // Navigate to scanner for next page
+        // Multi-Page Review & Editor Studio
+        composable(Screen.Review.route) {
+            DocumentReviewScreen(
+                viewModel = viewModel,
+                onBackToCamera = {
                     navController.navigate(Screen.Scanner.route) {
                         popUpTo(Screen.Home.route)
                     }
                 },
-                onNext = {
-                    // Commit current page to disk
-                    viewModel.addPageToCurrentDocument()
-                    // Move to next image from queue
-                    val hasNext = viewModel.processNextImageFromQueue()
-                    if (hasNext) {
-                        navController.navigate(Screen.CropEditor.route) {
-                            popUpTo(Screen.Home.route)
-                        }
-                    } else {
-                        val docId = viewModel.ensureDocumentId()
-                        navController.navigate(Screen.Export.createRoute(docId))
-                    }
-                },
-                onConfirm = {
-                    // Commit current page to disk
-                    viewModel.addPageToCurrentDocument()
-                    // Navigate to export
+                onProceedToExport = {
                     val docId = viewModel.ensureDocumentId()
                     navController.navigate(Screen.Export.createRoute(docId))
                 }

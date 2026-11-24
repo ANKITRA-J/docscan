@@ -29,6 +29,8 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.docscan.app.model.CornerType
+import com.docscan.app.model.QuadCorners
 import com.docscan.app.theme.AppColors
 import com.docscan.app.util.FileUtils
 import java.io.File
@@ -228,26 +230,6 @@ fun CropEditorScreen(
             }
         }
     }
-}
-
-data class QuadCorners(
-    val topLeft: Offset,
-    val topRight: Offset,
-    val bottomLeft: Offset,
-    val bottomRight: Offset
-) {
-    fun adjustCorner(cornerType: CornerType, newOffset: Offset): QuadCorners {
-        return when (cornerType) {
-            CornerType.TopLeft -> copy(topLeft = newOffset)
-            CornerType.TopRight -> copy(topRight = newOffset)
-            CornerType.BottomLeft -> copy(bottomLeft = newOffset)
-            CornerType.BottomRight -> copy(bottomRight = newOffset)
-        }
-    }
-}
-
-enum class CornerType {
-    TopLeft, TopRight, BottomLeft, BottomRight
 }
 
 @Composable

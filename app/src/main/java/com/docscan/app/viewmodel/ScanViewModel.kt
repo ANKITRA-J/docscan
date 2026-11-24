@@ -1,13 +1,17 @@
 package com.docscan.app.viewmodel
 
 import android.app.Application
+import android.content.Context
 import android.graphics.Bitmap
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.geometry.Offset
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.docscan.app.model.CornerType
 import com.docscan.app.model.EnhanceMode
+import com.docscan.app.model.QuadCorners
 import com.docscan.app.model.ScanDocument
+import com.docscan.app.model.ScannedPage
 import com.docscan.app.util.FileUtils
 import com.docscan.app.util.ImageProcessor
 import kotlinx.coroutines.Dispatchers
@@ -19,7 +23,15 @@ import java.util.*
 
 class ScanViewModel(application: Application) : AndroidViewModel(application) {
 
-    // Current captured or imported image file
+    // Multi-page batch session
+    var scannedPages = mutableStateOf<List<ScannedPage>>(emptyList())
+        private set
+
+    // Default filter for new scans
+    var defaultFilter = mutableStateOf(EnhanceMode.Magic)
+        private set
+
+    // Current captured or imported image file (for single crop editor)
     var capturedImageFile = mutableStateOf<File?>(null)
         private set
 
@@ -55,7 +67,7 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
     var currentDocumentPagePaths = mutableStateOf<List<String>>(emptyList())
         private set
 
-    // Queue of images for multi-image import from gallery
+    // Queue of images for legacy multi-image import from gallery
     var imageQueue = mutableStateOf<List<File>>(emptyList())
         private set
 
@@ -66,7 +78,6 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
         private set
 
     init {
-        // Load persistent documents on startup
         loadPersistedDocuments()
     }
 
@@ -78,6 +89,160 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
     }
+
+    // -------------------------------------------------------------
+    // Continuous Camera / Batch Scanning & Multi-Page Review Flow
+    // -------------------------------------------------------------
+
+    fun addScannedPage(file: File) {
+        val page = ScannedPage(
+            originalFile = file,
+            filter = defaultFilter.value
+        )
+        scannedPages.value = scannedPages.value + page
+    }
+
+    fun setScannedPages(files: List<File>) {
+        scannedPages.value = files.map { file ->
+            ScannedPage(
+                originalFile = file,
+                filter = defaultFilter.value
+            )
+        }
+    }
+
+    fun updatePageCorners(pageId: String, corners: QuadCorners) {
+        scannedPages.value = scannedPages.value.map { page ->
+            if (page.id == pageId) {
+                page.copy(corners = corners, processedPath = null)
+            } else {
+                page
+            }
+        }
+    }
+
+    fun rotatePage(pageId: String) {
+        scannedPages.value = scannedPages.value.map { page ->
+            if (page.id == pageId) {
+                val newRot = (page.rotation + 90) % 360
+                page.copy(rotation = newRot, processedPath = null)
+            } else {
+                page
+            }
+        }
+    }
+
+    fun resetPageCrop(pageId: String) {
+        scannedPages.value = scannedPages.value.map { page ->
+            if (page.id == pageId) {
+                page.copy(corners = QuadCorners.FULL, processedPath = null)
+            } else {
+                page
+            }
+        }
+    }
+
+    fun deletePage(pageIndex: Int) {
+        if (pageIndex in scannedPages.value.indices) {
+            val list = scannedPages.value.toMutableList()
+            list.removeAt(pageIndex)
+            scannedPages.value = list
+        }
+    }
+
+    fun movePage(fromIndex: Int, toIndex: Int) {
+        if (fromIndex in scannedPages.value.indices && toIndex in scannedPages.value.indices && fromIndex != toIndex) {
+            val list = scannedPages.value.toMutableList()
+            val item = list.removeAt(fromIndex)
+            list.add(toIndex, item)
+            scannedPages.value = list
+        }
+    }
+
+    fun applyFilterToPage(pageIndex: Int, mode: EnhanceMode) {
+        if (pageIndex in scannedPages.value.indices) {
+            scannedPages.value = scannedPages.value.mapIndexed { idx, page ->
+                if (idx == pageIndex) page.copy(filter = mode, processedPath = null) else page
+            }
+        }
+    }
+
+    fun applyFilterToAllPages(mode: EnhanceMode) {
+        defaultFilter.value = mode
+        scannedPages.value = scannedPages.value.map { page ->
+            page.copy(filter = mode, processedPath = null)
+        }
+    }
+
+    fun applyFilterToSelectedPages(indices: Set<Int>, mode: EnhanceMode) {
+        scannedPages.value = scannedPages.value.mapIndexed { idx, page ->
+            if (idx in indices) page.copy(filter = mode, processedPath = null) else page
+        }
+    }
+
+    /**
+     * Process all pages in background before exporting to PDF or Images.
+     * Decodes, rotates, crops and enhances one page at a time with memory recycling.
+     */
+    suspend fun processAllPagesForExport(context: Context): List<String> = withContext(Dispatchers.IO) {
+        val docId = ensureDocumentId()
+        val processedPaths = mutableListOf<String>()
+
+        scannedPages.value.forEachIndexed { index, page ->
+            val pageFile = FileUtils.createPageFile(context, docId, index)
+
+            // Decode original with safe sampling
+            var bmp = FileUtils.decodeSampledBitmap(page.originalFile.absolutePath, 2048, 2048)
+            if (bmp != null) {
+                // Apply manual rotation
+                if (page.rotation != 0) {
+                    bmp = FileUtils.rotateBitmap(bmp, page.rotation, recycleSource = true)
+                }
+
+                // Apply crop
+                val cropped = ImageProcessor.perspectiveTransform(
+                    bmp,
+                    page.corners.topLeft,
+                    page.corners.topRight,
+                    page.corners.bottomLeft,
+                    page.corners.bottomRight
+                )
+
+                // Apply filter
+                val enhanced = ImageProcessor.applyEnhancement(cropped, page.filter)
+
+                // Save to disk
+                val success = FileUtils.saveBitmap(enhanced, pageFile, quality = 92)
+                if (success) {
+                    processedPaths.add(pageFile.absolutePath)
+                }
+
+                // Clean up in-memory bitmaps
+                if (bmp != cropped && !bmp.isRecycled) bmp.recycle()
+                if (cropped != enhanced && !cropped.isRecycled) cropped.recycle()
+                if (!enhanced.isRecycled) enhanced.recycle()
+            }
+        }
+
+        withContext(Dispatchers.Main) {
+            currentDocumentPagePaths.value = processedPaths
+            if (processedPaths.isNotEmpty()) {
+                // Set first page as preview
+                viewModelScope.launch(Dispatchers.IO) {
+                    val previewBmp = FileUtils.decodeSampledBitmap(processedPaths.first(), 800, 800)
+                    withContext(Dispatchers.Main) {
+                        enhancedBitmap.value = previewBmp
+                    }
+                }
+            }
+        }
+
+        processedPaths
+    }
+
+    // -------------------------------------------------------------
+    // Single / Legacy scan methods
+    // -------------------------------------------------------------
 
     fun setCapturedImage(file: File) {
         capturedImageFile.value = file
@@ -96,14 +261,12 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
         queueTotalCount.value = files.size
         queueCurrentIndex.value = 0
         manualRotation.value = 0
+        setScannedPages(files)
         if (files.isNotEmpty()) {
             capturedImageFile.value = files[0]
         }
     }
 
-    /**
-     * Advance to the next image in the queue. Returns true if advanced, false if queue is done.
-     */
     fun processNextImageFromQueue(): Boolean {
         val nextIndex = queueCurrentIndex.value + 1
         return if (nextIndex < imageQueue.value.size) {
@@ -130,13 +293,10 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
         bottomRight: Offset
     ) {
         val imageFile = capturedImageFile.value ?: return
-
-        // Decode safely with downsampling to prevent OOM
         var bitmap = FileUtils.decodeSampledBitmap(imageFile.absolutePath, 2048, 2048) ?: return
 
-        // Apply manual rotation if set
         if (manualRotation.value != 0) {
-            bitmap = FileUtils.rotateBitmap(bitmap, manualRotation.value)
+            bitmap = FileUtils.rotateBitmap(bitmap, manualRotation.value, recycleSource = true)
         }
 
         val cropped = ImageProcessor.perspectiveTransform(
@@ -148,7 +308,6 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
         )
 
         croppedBitmap.value = cropped
-        // Apply current mode to cropped bitmap
         enhancedBitmap.value = ImageProcessor.applyEnhancement(cropped, currentEnhanceMode.value)
     }
 
@@ -158,14 +317,9 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
         enhancedBitmap.value = ImageProcessor.applyEnhancement(cropped, mode)
     }
 
-    /**
-     * Commit current page to disk and add path to currentDocumentPagePaths.
-     */
     fun addPageToCurrentDocument(): String? {
         val bmp = enhancedBitmap.value ?: croppedBitmap.value ?: return null
-        val docId = currentDocumentId.value ?: UUID.randomUUID().toString().also {
-            currentDocumentId.value = it
-        }
+        val docId = ensureDocumentId()
 
         val pageIndex = currentDocumentPagePaths.value.size
         val pageFile = FileUtils.createPageFile(getApplication(), docId, pageIndex)
@@ -231,7 +385,6 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
         currentDocumentTitle.value = doc.name
         currentDocumentPagePaths.value = doc.pagePaths
 
-        // Load preview for first page
         viewModelScope.launch(Dispatchers.IO) {
             val previewPath = doc.pagePaths.firstOrNull() ?: doc.thumbnailPath
             if (previewPath != null) {
@@ -245,6 +398,8 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun reset() {
+        scannedPages.value = emptyList()
+        defaultFilter.value = EnhanceMode.Magic
         capturedImageFile.value = null
         manualRotation.value = 0
         croppedBitmap.value = null
@@ -280,6 +435,10 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun getPageCount(): Int {
-        return currentDocumentPagePaths.value.size
+        return if (currentDocumentPagePaths.value.isNotEmpty()) {
+            currentDocumentPagePaths.value.size
+        } else {
+            scannedPages.value.size
+        }
     }
 }

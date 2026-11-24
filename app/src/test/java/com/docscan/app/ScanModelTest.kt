@@ -2,14 +2,16 @@ package com.docscan.app
 
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import com.docscan.app.model.CornerType
 import com.docscan.app.model.EnhanceMode
+import com.docscan.app.model.QuadCorners
 import com.docscan.app.model.ScanDocument
-import com.docscan.app.ui.crop.CornerType
-import com.docscan.app.ui.crop.QuadCorners
+import com.docscan.app.model.ScannedPage
 import com.docscan.app.ui.crop.findNearestCorner
 import com.docscan.app.util.PdfGenerator
 import org.junit.Assert.*
 import org.junit.Test
+import java.io.File
 import java.util.Date
 
 class ScanModelTest {
@@ -85,5 +87,16 @@ class ScanModelTest {
         assertEquals(842, PdfGenerator.PageFormat.A4.heightPt)
         assertEquals(612, PdfGenerator.PageFormat.LETTER.widthPt)
         assertEquals(792, PdfGenerator.PageFormat.LETTER.heightPt)
+    }
+
+    @Test
+    fun testScannedPageCreation() {
+        val page = ScannedPage(
+            originalFile = File("/tmp/test.jpg"),
+            filter = EnhanceMode.BlackWhite
+        )
+        assertEquals(0, page.rotation)
+        assertEquals(EnhanceMode.BlackWhite, page.filter)
+        assertEquals(0.05f, page.corners.topLeft.x, 0.001f)
     }
 }

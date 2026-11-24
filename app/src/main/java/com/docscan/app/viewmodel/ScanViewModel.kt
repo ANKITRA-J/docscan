@@ -51,9 +51,17 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
     var currentEnhanceMode = mutableStateOf(EnhanceMode.Original)
         private set
 
-    // All persistent scanned documents
+    // Persistent scanned documents
     var documents = mutableStateOf<List<ScanDocument>>(emptyList())
         private set
+
+    // Opened external PDF for viewing and tools (Remove Password, Compress, Add Password)
+    var openedPdfFile = mutableStateOf<File?>(null)
+        private set
+
+    fun setOpenedPdf(file: File?) {
+        openedPdfFile.value = file
+    }
 
     // Current document ID (created on first scan)
     var currentDocumentId = mutableStateOf<String?>(null)

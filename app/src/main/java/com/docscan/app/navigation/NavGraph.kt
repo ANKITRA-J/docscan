@@ -23,7 +23,7 @@ import java.io.File
 fun NavGraph(
     navController: NavHostController,
     viewModel: ScanViewModel,
-    startDestination: String = Screen.Home.route
+    startDestination: String = if (viewModel.openedPdfFile.value != null) Screen.PdfViewer.route else Screen.Home.route
 ) {
     NavHost(
         navController = navController,
@@ -50,6 +50,10 @@ fun NavGraph(
                 },
                 onDeleteDocument = { document ->
                     viewModel.deleteDocument(document.id)
+                },
+                onOpenPdfSelected = { file ->
+                    viewModel.setOpenedPdf(file)
+                    navController.navigate(Screen.PdfViewer.route)
                 }
             )
         }
@@ -105,6 +109,16 @@ fun NavGraph(
                 onExportComplete = {
                     viewModel.reset()
                     navController.popBackStack(Screen.Home.route, inclusive = false)
+                }
+            )
+        }
+
+        // PDF Viewer & Tools Screen (View, Unlock/Remove Password, Add Password, Compress)
+        composable(Screen.PdfViewer.route) {
+            com.docscan.app.ui.pdf.PdfViewerScreen(
+                pdfFile = viewModel.openedPdfFile.value,
+                onBack = {
+                    navController.popBackStack()
                 }
             )
         }

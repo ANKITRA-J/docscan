@@ -17,6 +17,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Photo
 import androidx.compose.material3.*
@@ -57,6 +58,7 @@ fun HomeScreen(
     onGalleryImagesSelected: (List<File>) -> Unit,
     onDocumentClick: (ScanDocument) -> Unit,
     onDeleteDocument: (ScanDocument) -> Unit = {},
+    onOpenPdfSelected: (File) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -65,6 +67,45 @@ fun HomeScreen(
     var showMenu by remember { mutableStateOf(false) }
     var isImporting by remember { mutableStateOf(false) }
     var documentToDelete by remember { mutableStateOf<ScanDocument?>(null) }
+
+    // PDF Picker for opening and editing external PDFs
+    val pdfPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            scope.launch {
+                val copiedFile = withContext(Dispatchers.IO) {
+                    try {
+                        val input = context.contentResolver.openInputStream(uri)
+                        if (input != null) {
+                            var name = "Document.pdf"
+                            val cursor = context.contentResolver.query(uri, null, null, null, null)
+                            cursor?.use {
+                                if (it.moveToFirst()) {
+                                    val nameIdx = it.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                                    if (nameIdx >= 0) {
+                                        val displayName = it.getString(nameIdx)
+                                        if (!displayName.isNullOrBlank()) name = displayName
+                                    }
+                                }
+                            }
+                            val destFile = File(context.cacheDir, name)
+                            input.use { inp -> destFile.outputStream().use { out -> inp.copyTo(out) } }
+                            if (destFile.exists() && destFile.length() > 0) destFile else null
+                        } else null
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                        null
+                    }
+                }
+                if (copiedFile != null) {
+                    onOpenPdfSelected(copiedFile)
+                } else {
+                    Toast.makeText(context, "Could not open selected PDF", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
 
     // Multi-Image Gallery Picker
     val galleryLauncher = rememberLauncherForActivityResult(
@@ -116,6 +157,15 @@ fun HomeScreen(
                         fontWeight = FontWeight.Bold
                     )
                 },
+                actions = {
+                    IconButton(onClick = { pdfPickerLauncher.launch("application/pdf") }) {
+                        Icon(
+                            imageVector = Icons.Default.Folder,
+                            contentDescription = "Open PDF",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface,
                     titleContentColor = MaterialTheme.colorScheme.onSurface
@@ -164,6 +214,16 @@ fun HomeScreen(
                             Icon(Icons.Default.Photo, contentDescription = null)
                         }
                     )
+                    DropdownMenuItem(
+                        text = { Text("Open PDF / Tools") },
+                        onClick = {
+                            showMenu = false
+                            pdfPickerLauncher.launch("application/pdf")
+                        },
+                        leadingIcon = {
+                            Icon(Icons.Default.Folder, contentDescription = null)
+                        }
+                    )
                 }
             }
         },
@@ -178,7 +238,8 @@ fun HomeScreen(
             if (documents.isEmpty()) {
                 EmptyState(
                     onScanClick = onScanClick,
-                    onGalleryClick = { galleryLauncher.launch("image/*") }
+                    onGalleryClick = { galleryLauncher.launch("image/*") },
+                    onPdfClick = { pdfPickerLauncher.launch("application/pdf") }
                 )
             } else {
                 val columns = if (screenWidth < 600.dp) 2 else 3
@@ -391,6 +452,7 @@ fun DocumentCard(
 fun EmptyState(
     onScanClick: () -> Unit,
     onGalleryClick: () -> Unit,
+    onPdfClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -398,9 +460,9 @@ fun EmptyState(
         verticalArrangement = Arrangement.Center,
         modifier = modifier
             .fillMaxSize()
-            .padding(32.dp)
+            .padding(24.dp)
     ) {
-        Text(text = "📄", fontSize = 72.sp)
+        Text(text = "📄", fontSize = 64.sp)
         Spacer(modifier = Modifier.height(16.dp))
         Text(
             text = stringResource(R.string.no_scans),
@@ -411,32 +473,55 @@ fun EmptyState(
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
-            text = "Scan receipts, documents, and notes or import photos from your gallery",
+            text = "Scan receipts, ID cards, books, or open & edit PDF documents",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center
         )
         Spacer(modifier = Modifier.height(24.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Button(
                 onClick = onScanClick,
                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                 shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.height(48.dp)
+                modifier = Modifier
+                    .weight(1f)
+                    .height(44.dp),
+                contentPadding = PaddingValues(horizontal = 4.dp)
             ) {
-                Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(text = "Camera")
+                Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(text = "Scan", fontSize = 12.sp)
             }
 
             OutlinedButton(
                 onClick = onGalleryClick,
                 shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.height(48.dp)
+                modifier = Modifier
+                    .weight(1f)
+                    .height(44.dp),
+                contentPadding = PaddingValues(horizontal = 4.dp)
             ) {
-                Icon(Icons.Default.Photo, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(text = "Gallery")
+                Icon(Icons.Default.Photo, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(text = "Gallery", fontSize = 12.sp)
+            }
+
+            OutlinedButton(
+                onClick = onPdfClick,
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier
+                    .weight(1f)
+                    .height(44.dp),
+                contentPadding = PaddingValues(horizontal = 4.dp)
+            ) {
+                Icon(Icons.Default.Folder, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(text = "PDF Tools", fontSize = 12.sp)
             }
         }
     }

@@ -7,6 +7,7 @@ sealed class Screen(val route: String) {
     object Home : Screen("home")
     object Scanner : Screen("scanner")
     object Review : Screen("review")
+    object PdfViewer : Screen("pdf_viewer")
     object CropEditor : Screen("crop_editor")
     object EnhanceModes : Screen("enhance_modes")
     object Export : Screen("export/{documentId}") {

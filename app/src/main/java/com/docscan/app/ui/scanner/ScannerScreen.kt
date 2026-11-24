@@ -4,8 +4,8 @@ package com.docscan.app.ui.scanner
 
 import android.Manifest
 import android.content.Context
+import android.graphics.BitmapFactory
 import android.net.Uri
-import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -22,12 +22,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowForward
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.FlashOff
-import androidx.compose.material.icons.filled.FlashOn
-import androidx.compose.material.icons.filled.Photo
-import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -45,18 +40,32 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import coil.compose.AsyncImage
 import com.docscan.app.util.FileUtils
+import com.docscan.app.util.ImageProcessor
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
 
+enum class ScanMode(val title: String, val icon: androidx.compose.ui.graphics.vector.ImageVector) {
+    DOCUMENT("Document", Icons.Default.Description),
+    ID_CARD("ID Card", Icons.Default.Badge),
+    BOOK("Book", Icons.Default.MenuBook)
+}
+
+enum class IdCardStep {
+    FRONT,
+    BACK
+}
+
 /**
- * Scanner preview screen with continuous multi-page capture mode.
- * Allows snapping unlimited photos in succession without interrupting the viewfinder flow.
+ * Scanner preview screen with continuous multi-page capture mode,
+ * specialized ID Card (2-in-1 Front & Back) mode, and Book (2-page split) mode.
  */
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
@@ -72,6 +81,13 @@ fun ScannerScreen(
     var flashEnabled by remember { mutableStateOf(false) }
     var isCapturing by remember { mutableStateOf(false) }
     var showFlashOverlay by remember { mutableStateOf(false) }
+
+    // Scan Mode: Document, ID Card, Book
+    var currentMode by remember { mutableStateOf(ScanMode.DOCUMENT) }
+
+    // ID Card Mode State
+    var idCardStep by remember { mutableStateOf(IdCardStep.FRONT) }
+    var frontIdFile by remember { mutableStateOf<File?>(null) }
 
     // List of files captured in current continuous session
     val capturedFiles = remember { mutableStateListOf<File>() }
@@ -114,13 +130,84 @@ fun ScannerScreen(
         if (cameraPermissionState.status.isGranted) {
             CameraPreview(
                 onImageCaptured = { file ->
-                    isCapturing = false
-                    capturedFiles.add(file)
-                    // Trigger shutter flash animation
                     scope.launch {
                         showFlashOverlay = true
                         delay(100)
                         showFlashOverlay = false
+
+                        when (currentMode) {
+                            ScanMode.DOCUMENT -> {
+                                isCapturing = false
+                                capturedFiles.add(file)
+                            }
+                            ScanMode.ID_CARD -> {
+                                withContext(Dispatchers.IO) {
+                                    val bmp = BitmapFactory.decodeFile(file.absolutePath)
+                                    val croppedCard = ImageProcessor.cropCenterCard(bmp)
+                                    bmp.recycle()
+
+                                    if (idCardStep == IdCardStep.FRONT) {
+                                        val frontFile = FileUtils.createImageFile(context)
+                                        FileUtils.saveBitmap(croppedCard, frontFile)
+                                        croppedCard.recycle()
+                                        withContext(Dispatchers.Main) {
+                                            frontIdFile = frontFile
+                                            idCardStep = IdCardStep.BACK
+                                            isCapturing = false
+                                            Toast.makeText(context, "Front captured! Now align BACK side.", Toast.LENGTH_SHORT).show()
+                                        }
+                                    } else {
+                                        // Back card captured -> merge with front
+                                        val frontFile = frontIdFile
+                                        if (frontFile != null && frontFile.exists()) {
+                                            val frontBmp = BitmapFactory.decodeFile(frontFile.absolutePath)
+                                            val mergedA4 = ImageProcessor.mergeIdCard(frontBmp, croppedCard)
+                                            frontBmp.recycle()
+                                            croppedCard.recycle()
+
+                                            val mergedFile = FileUtils.createImageFile(context)
+                                            FileUtils.saveBitmap(mergedA4, mergedFile)
+                                            mergedA4.recycle()
+                                            frontFile.delete()
+
+                                            withContext(Dispatchers.Main) {
+                                                frontIdFile = null
+                                                idCardStep = IdCardStep.FRONT
+                                                capturedFiles.add(mergedFile)
+                                                isCapturing = false
+                                                Toast.makeText(context, "ID Card (2-in-1) page created!", Toast.LENGTH_SHORT).show()
+                                            }
+                                        } else {
+                                            withContext(Dispatchers.Main) {
+                                                isCapturing = false
+                                                capturedFiles.add(file)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            ScanMode.BOOK -> {
+                                withContext(Dispatchers.IO) {
+                                    val bmp = BitmapFactory.decodeFile(file.absolutePath)
+                                    val (leftBmp, rightBmp) = ImageProcessor.splitBookPages(bmp)
+                                    bmp.recycle()
+
+                                    val page1File = FileUtils.createImageFile(context)
+                                    val page2File = FileUtils.createImageFile(context)
+                                    FileUtils.saveBitmap(leftBmp, page1File)
+                                    FileUtils.saveBitmap(rightBmp, page2File)
+                                    leftBmp.recycle()
+                                    rightBmp.recycle()
+
+                                    withContext(Dispatchers.Main) {
+                                        capturedFiles.add(page1File)
+                                        capturedFiles.add(page2File)
+                                        isCapturing = false
+                                        Toast.makeText(context, "Book scanned: 2 pages created!", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            }
+                        }
                     }
                 },
                 onCaptureError = {
@@ -131,6 +218,13 @@ fun ScannerScreen(
                 isCapturing = isCapturing,
                 modifier = Modifier.fillMaxSize()
             )
+
+            // Overlays for ID Card and Book modes
+            if (currentMode == ScanMode.ID_CARD) {
+                IdCardOverlay(step = idCardStep)
+            } else if (currentMode == ScanMode.BOOK) {
+                BookOverlay()
+            }
         } else {
             // Permission denied state
             Box(
@@ -189,7 +283,6 @@ fun ScannerScreen(
             navigationIcon = {
                 IconButton(onClick = {
                     if (capturedFiles.isNotEmpty()) {
-                        // If pages were captured, proceed with review or ask
                         onFinishCapture(capturedFiles)
                     } else {
                         onClose()
@@ -219,98 +312,246 @@ fun ScannerScreen(
             modifier = Modifier.fillMaxWidth()
         )
 
-        // Bottom Controls: Gallery | Shutter | Review & Done
+        // Bottom Controls Area: Mode Selector & Shutter Bar
         if (cameraPermissionState.status.isGranted) {
-            Row(
+            Column(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .padding(horizontal = 24.dp)
-                    .padding(bottom = 44.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                    .padding(bottom = 36.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // Left: Gallery Import Button
-                IconButton(
-                    onClick = { galleryLauncher.launch("image/*") },
-                    modifier = Modifier
-                        .size(52.dp)
-                        .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                // Mode Selector Bar (Document | ID Card | Book)
+                Surface(
+                    color = Color.Black.copy(alpha = 0.6f),
+                    shape = RoundedCornerShape(24.dp),
+                    modifier = Modifier.padding(bottom = 18.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Photo,
-                        contentDescription = "Import from Gallery",
-                        tint = Color.White,
-                        modifier = Modifier.size(26.dp)
-                    )
-                }
-
-                // Center: Continuous Shutter Button
-                Box(contentAlignment = Alignment.Center) {
-                    Button(
-                        onClick = { isCapturing = true },
-                        enabled = !isCapturing,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.primary
-                        ),
-                        shape = CircleShape,
-                        modifier = Modifier
-                            .size(76.dp)
-                            .shadow(elevation = 8.dp, shape = CircleShape)
+                    Row(
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        if (isCapturing) {
-                            CircularProgressIndicator(
-                                color = Color.White,
-                                modifier = Modifier.size(30.dp),
-                                strokeWidth = 3.dp
-                            )
-                        } else {
-                            Icon(
-                                imageVector = Icons.Default.PhotoCamera,
-                                contentDescription = "Capture",
-                                modifier = Modifier.size(36.dp),
-                                tint = Color.White
-                            )
+                        ScanMode.values().forEach { mode ->
+                            val isSelected = currentMode == mode
+                            Surface(
+                                color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                                shape = RoundedCornerShape(20.dp),
+                                modifier = Modifier.clickable {
+                                    currentMode = mode
+                                    if (mode != ScanMode.ID_CARD) {
+                                        idCardStep = IdCardStep.FRONT
+                                        frontIdFile = null
+                                    }
+                                }
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = mode.icon,
+                                        contentDescription = mode.title,
+                                        tint = Color.White,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = mode.title,
+                                        color = Color.White,
+                                        fontSize = 12.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                }
+                            }
                         }
                     }
                 }
 
-                // Right: Review / Done Button (with latest thumbnail preview)
-                if (capturedFiles.isNotEmpty()) {
-                    Box(
+                // Shutter Row: Gallery | Capture Button | Review Thumbnail
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 28.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    // Left: Gallery Import Button
+                    IconButton(
+                        onClick = { galleryLauncher.launch("image/*") },
                         modifier = Modifier
-                            .size(56.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .border(2.dp, Color.White, RoundedCornerShape(12.dp))
-                            .clickable { onFinishCapture(capturedFiles) }
+                            .size(52.dp)
+                            .background(Color.Black.copy(alpha = 0.5f), CircleShape)
                     ) {
-                        AsyncImage(
-                            model = capturedFiles.last(),
-                            contentDescription = "Review",
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize()
+                        Icon(
+                            imageVector = Icons.Default.Photo,
+                            contentDescription = "Import from Gallery",
+                            tint = Color.White,
+                            modifier = Modifier.size(26.dp)
                         )
-                        // Count badge
-                        Surface(
-                            color = MaterialTheme.colorScheme.primary,
+                    }
+
+                    // Center: Shutter Button
+                    Box(contentAlignment = Alignment.Center) {
+                        Button(
+                            onClick = { isCapturing = true },
+                            enabled = !isCapturing,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary
+                            ),
                             shape = CircleShape,
                             modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .offset(x = 4.dp, y = (-4).dp)
+                                .size(76.dp)
+                                .shadow(elevation = 8.dp, shape = CircleShape)
                         ) {
-                            Text(
-                                text = "${capturedFiles.size}",
-                                color = Color.White,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                            )
+                            if (isCapturing) {
+                                CircularProgressIndicator(
+                                    color = Color.White,
+                                    modifier = Modifier.size(30.dp),
+                                    strokeWidth = 3.dp
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Default.PhotoCamera,
+                                    contentDescription = "Capture",
+                                    modifier = Modifier.size(36.dp),
+                                    tint = Color.White
+                                )
+                            }
                         }
                     }
-                } else {
-                    // Empty placeholder to balance layout
-                    Spacer(modifier = Modifier.size(52.dp))
+
+                    // Right: Review / Done Button (with latest thumbnail preview)
+                    if (capturedFiles.isNotEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .size(56.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .border(2.dp, Color.White, RoundedCornerShape(12.dp))
+                                .clickable { onFinishCapture(capturedFiles) }
+                        ) {
+                            AsyncImage(
+                                model = capturedFiles.last(),
+                                contentDescription = "Review",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                            // Count badge
+                            Surface(
+                                color = MaterialTheme.colorScheme.primary,
+                                shape = CircleShape,
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .offset(x = 4.dp, y = (-4).dp)
+                            ) {
+                                Text(
+                                    text = "${capturedFiles.size}",
+                                    color = Color.White,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+                    } else {
+                        Spacer(modifier = Modifier.size(52.dp))
+                    }
                 }
+            }
+        }
+    }
+}
+
+/**
+ * Overlay for ID Card scanning with guide frame and current step indicator
+ */
+@Composable
+fun IdCardOverlay(step: IdCardStep) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(bottom = 120.dp, top = 60.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Surface(
+                color = Color.Black.copy(alpha = 0.7f),
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier.padding(bottom = 16.dp)
+            ) {
+                Text(
+                    text = if (step == IdCardStep.FRONT) "Align FRONT of ID Card inside frame" else "Align BACK of ID Card inside frame",
+                    color = Color.White,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                )
+            }
+
+            // ID Card Frame (Standard 85.6mm x 53.98mm aspect ratio ~1.586)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(0.85f)
+                    .aspectRatio(1.586f)
+                    .border(2.dp, Color.White.copy(alpha = 0.9f), RoundedCornerShape(12.dp))
+                    .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(12.dp))
+            )
+        }
+    }
+}
+
+/**
+ * Overlay for Book mode with vertical center line splitting left and right pages
+ */
+@Composable
+fun BookOverlay() {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(bottom = 120.dp, top = 60.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        // Vertical dividing line
+        Box(
+            modifier = Modifier
+                .fillMaxHeight(0.75f)
+                .width(2.dp)
+                .background(Color.White.copy(alpha = 0.8f))
+        )
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth(0.9f)
+                .align(Alignment.TopCenter)
+                .padding(top = 16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Surface(
+                color = Color.Black.copy(alpha = 0.65f),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text(
+                    text = "PAGE 1 (Left)",
+                    color = Color.White,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                )
+            }
+
+            Surface(
+                color = Color.Black.copy(alpha = 0.65f),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text(
+                    text = "PAGE 2 (Right)",
+                    color = Color.White,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                )
             }
         }
     }
@@ -348,19 +589,18 @@ fun CameraPreview(
                 return@LaunchedEffect
             }
 
-            val file = FileUtils.createImageFile(context)
-            val outputOptions = ImageCapture.OutputFileOptions.Builder(file).build()
+            val photoFile = FileUtils.createImageFile(context)
+            val outputOptions = ImageCapture.OutputFileOptions.Builder(photoFile).build()
 
             capture.takePicture(
                 outputOptions,
                 ContextCompat.getMainExecutor(context),
                 object : ImageCapture.OnImageSavedCallback {
-                    override fun onImageSaved(output: ImageCapture.OutputFileResults) {
-                        onImageCaptured(file)
+                    override fun onImageSaved(outputFileResults: ImageCapture.OutputFileResults) {
+                        onImageCaptured(photoFile)
                     }
 
                     override fun onError(exception: ImageCaptureException) {
-                        Log.e("CameraPreview", "Image capture failed", exception)
                         onCaptureError()
                     }
                 }
@@ -369,17 +609,21 @@ fun CameraPreview(
     }
 
     LaunchedEffect(previewView) {
-        val cameraProvider = context.getCameraProvider()
+        val cameraProvider = suspendCoroutine<ProcessCameraProvider> { continuation ->
+            ProcessCameraProvider.getInstance(context).also { future ->
+                future.addListener({
+                    continuation.resume(future.get())
+                }, ContextCompat.getMainExecutor(context))
+            }
+        }
 
         val preview = Preview.Builder().build().also {
             it.setSurfaceProvider(previewView.surfaceProvider)
         }
 
-        val imageCaptureBuilder = ImageCapture.Builder()
-            .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
-            .setFlashMode(if (flashEnabled) ImageCapture.FLASH_MODE_ON else ImageCapture.FLASH_MODE_OFF)
-
-        imageCapture.value = imageCaptureBuilder.build()
+        imageCapture.value = ImageCapture.Builder()
+            .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+            .build()
 
         val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
 
@@ -392,7 +636,7 @@ fun CameraPreview(
                 imageCapture.value
             )
         } catch (e: Exception) {
-            Log.e("CameraPreview", "Camera binding failed", e)
+            e.printStackTrace()
         }
     }
 
@@ -400,12 +644,4 @@ fun CameraPreview(
         factory = { previewView },
         modifier = modifier
     )
-}
-
-suspend fun Context.getCameraProvider(): ProcessCameraProvider = suspendCoroutine { continuation ->
-    ProcessCameraProvider.getInstance(this).also { future ->
-        future.addListener({
-            continuation.resume(future.get())
-        }, ContextCompat.getMainExecutor(this))
-    }
 }

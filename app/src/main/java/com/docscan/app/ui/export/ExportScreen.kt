@@ -69,6 +69,10 @@ fun ExportScreen(
     }
 
     var selectedPageFormat by remember { mutableStateOf(PdfGenerator.PageFormat.A4) }
+    var selectedCompression by remember { mutableStateOf(PdfGenerator.CompressionLevel.ORIGINAL) }
+    var enablePassword by remember { mutableStateOf(false) }
+    var passwordText by remember { mutableStateOf("") }
+    var passwordVisible by remember { mutableStateOf(false) }
 
     Box(
         modifier = modifier
@@ -186,6 +190,7 @@ fun ExportScreen(
             )
 
             // Page count & format selector
+            // Page count & Format Row
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -216,6 +221,101 @@ fun ExportScreen(
                 }
             }
 
+            // File Size & Quality Card
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 6.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                ),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Text(
+                        text = "File Size & Quality",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        listOf(
+                            PdfGenerator.CompressionLevel.ORIGINAL to "Original",
+                            PdfGenerator.CompressionLevel.MEDIUM to "Medium (~2MB)",
+                            PdfGenerator.CompressionLevel.LOW to "Small (~500KB)"
+                        ).forEach { (level, label) ->
+                            FilterChip(
+                                selected = selectedCompression == level,
+                                onClick = { selectedCompression = level },
+                                label = { Text(label, fontSize = 11.sp) }
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Password Protection Card
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 6.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                ),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Lock,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Password Protect PDF",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                        Switch(
+                            checked = enablePassword,
+                            onCheckedChange = { enablePassword = it }
+                        )
+                    }
+
+                    if (enablePassword) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        OutlinedTextField(
+                            value = passwordText,
+                            onValueChange = { passwordText = it },
+                            label = { Text("Enter PDF Password") },
+                            singleLine = true,
+                            visualTransformation = if (passwordVisible) androidx.compose.ui.text.input.VisualTransformation.None else androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                            trailingIcon = {
+                                IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                                    Icon(
+                                        imageVector = if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                        contentDescription = null
+                                    )
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+            }
+
             Spacer(modifier = Modifier.height(8.dp))
 
             // Export Options
@@ -236,20 +336,25 @@ fun ExportScreen(
                         exportStatusText = "Generating PDF..."
                         scope.launch {
                             val cleanName = docTitle.ifBlank { "Scan_$timeStamp" }
+                            val targetPassword = if (enablePassword && passwordText.isNotBlank()) passwordText else null
                             val pdfFile = withContext(Dispatchers.IO) {
                                 if (pagePaths.isNotEmpty()) {
                                     PdfGenerator.createPdfFromPagePaths(
-                                        context,
-                                        pagePaths,
-                                        cleanName,
-                                        selectedPageFormat
+                                        context = context,
+                                        pagePaths = pagePaths,
+                                        fileName = cleanName,
+                                        pageFormat = selectedPageFormat,
+                                        compression = selectedCompression,
+                                        password = targetPassword
                                     )
                                 } else if (finalBitmap != null) {
                                     PdfGenerator.createPdfFromBitmaps(
-                                        context,
-                                        listOf(finalBitmap),
-                                        cleanName,
-                                        selectedPageFormat
+                                        context = context,
+                                        bitmaps = listOf(finalBitmap),
+                                        fileName = cleanName,
+                                        pageFormat = selectedPageFormat,
+                                        compression = selectedCompression,
+                                        password = targetPassword
                                     )
                                 } else {
                                     null
@@ -312,20 +417,25 @@ fun ExportScreen(
                         exportStatusText = "Preparing PDF for sharing..."
                         scope.launch {
                             val cleanName = docTitle.ifBlank { "Scan_$timeStamp" }
+                            val targetPassword = if (enablePassword && passwordText.isNotBlank()) passwordText else null
                             val pdfFile = withContext(Dispatchers.IO) {
                                 if (pagePaths.isNotEmpty()) {
                                     PdfGenerator.createPdfFromPagePaths(
-                                        context,
-                                        pagePaths,
-                                        cleanName,
-                                        selectedPageFormat
+                                        context = context,
+                                        pagePaths = pagePaths,
+                                        fileName = cleanName,
+                                        pageFormat = selectedPageFormat,
+                                        compression = selectedCompression,
+                                        password = targetPassword
                                     )
                                 } else if (finalBitmap != null) {
                                     PdfGenerator.createPdfFromBitmaps(
-                                        context,
-                                        listOf(finalBitmap),
-                                        cleanName,
-                                        selectedPageFormat
+                                        context = context,
+                                        bitmaps = listOf(finalBitmap),
+                                        fileName = cleanName,
+                                        pageFormat = selectedPageFormat,
+                                        compression = selectedCompression,
+                                        password = targetPassword
                                     )
                                 } else {
                                     null

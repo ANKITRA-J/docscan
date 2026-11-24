@@ -234,6 +234,97 @@ object ImageProcessor {
     }
 
     /**
+     * Split a single photo of an open book into Left and Right pages down the vertical center.
+     */
+    fun splitBookPages(bitmap: Bitmap): Pair<Bitmap, Bitmap> {
+        val width = bitmap.width
+        val height = bitmap.height
+        val halfWidth = (width / 2).coerceAtLeast(1)
+        val left = Bitmap.createBitmap(bitmap, 0, 0, halfWidth, height)
+        val right = Bitmap.createBitmap(bitmap, halfWidth, 0, width - halfWidth, height)
+        return Pair(left, right)
+    }
+
+    /**
+     * Crop the center area of an image corresponding to an ID Card aspect ratio (approx 1.586).
+     */
+    fun cropCenterCard(bitmap: Bitmap, aspect: Float = 1.586f): Bitmap {
+        val imgWidth = bitmap.width.toFloat()
+        val imgHeight = bitmap.height.toFloat()
+        val imgAspect = imgWidth / imgHeight
+
+        val cropWidth: Float
+        val cropHeight: Float
+
+        if (imgAspect > aspect) {
+            cropHeight = imgHeight * 0.70f
+            cropWidth = cropHeight * aspect
+        } else {
+            cropWidth = imgWidth * 0.85f
+            cropHeight = cropWidth / aspect
+        }
+
+        val left = ((imgWidth - cropWidth) / 2f).toInt().coerceAtLeast(0)
+        val top = ((imgHeight - cropHeight) / 2f).toInt().coerceAtLeast(0)
+        val w = cropWidth.toInt().coerceIn(1, bitmap.width - left)
+        val h = cropHeight.toInt().coerceIn(1, bitmap.height - top)
+
+        return Bitmap.createBitmap(bitmap, left, top, w, h)
+    }
+
+    /**
+     * Merge Front and Back of an ID card onto a single standard A4 page.
+     * Places Front centered in top half and Back centered in bottom half.
+     */
+    fun mergeIdCard(frontBitmap: Bitmap, backBitmap: Bitmap): Bitmap {
+        val a4Width = 1654
+        val a4Height = 2338
+        val output = Bitmap.createBitmap(a4Width, a4Height, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(output)
+        canvas.drawColor(Color.WHITE)
+
+        val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.DKGRAY
+            textSize = 38f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textAlign = Paint.Align.CENTER
+        }
+
+        val cardPaint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)
+        val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.LTGRAY
+            style = Paint.Style.STROKE
+            strokeWidth = 3f
+        }
+
+        val targetWidth = (a4Width * 0.72f).toInt()
+
+        // Front Card
+        val frontRatio = targetWidth.toFloat() / frontBitmap.width.toFloat()
+        val frontHeight = (frontBitmap.height * frontRatio).toInt()
+        val frontLeft = (a4Width - targetWidth) / 2f
+        val frontTop = ((a4Height / 2f - frontHeight) / 2f) + 40f
+        val frontRect = RectF(frontLeft, frontTop, frontLeft + targetWidth, frontTop + frontHeight)
+
+        canvas.drawText("FRONT", a4Width / 2f, frontTop - 24f, textPaint)
+        canvas.drawBitmap(frontBitmap, null, frontRect, cardPaint)
+        canvas.drawRoundRect(frontRect, 16f, 16f, borderPaint)
+
+        // Back Card
+        val backRatio = targetWidth.toFloat() / backBitmap.width.toFloat()
+        val backHeight = (backBitmap.height * backRatio).toInt()
+        val backLeft = (a4Width - targetWidth) / 2f
+        val backTop = (a4Height / 2f) + ((a4Height / 2f - backHeight) / 2f) + 40f
+        val backRect = RectF(backLeft, backTop, backLeft + targetWidth, backTop + backHeight)
+
+        canvas.drawText("BACK", a4Width / 2f, backTop - 24f, textPaint)
+        canvas.drawBitmap(backBitmap, null, backRect, cardPaint)
+        canvas.drawRoundRect(backRect, 16f, 16f, borderPaint)
+
+        return output
+    }
+
+    /**
      * Create thumbnail safely from bitmap
      */
     fun createThumbnail(bitmap: Bitmap, maxSize: Int = 300): Bitmap {

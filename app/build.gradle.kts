@@ -94,8 +94,10 @@ dependencies {
     implementation("androidx.camera:camera-lifecycle:1.3.1")
     implementation("androidx.camera:camera-view:1.3.1")
     
-    // PDF generation
+    // PDF generation & security
     implementation("com.itextpdf:itext7-core:8.0.2")
+    implementation("com.itextpdf:bouncy-castle-adapter:8.0.2")
+    implementation("org.bouncycastle:bcprov-jdk18on:1.77")
     
     // Permissions handling
     implementation("com.google.accompanist:accompanist-permissions:0.32.0")

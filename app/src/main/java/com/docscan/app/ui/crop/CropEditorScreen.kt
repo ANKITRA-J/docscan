@@ -2,7 +2,7 @@
 
 package com.docscan.app.ui.crop
 
-import android.graphics.BitmapFactory
+import android.graphics.Bitmap
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -11,6 +11,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CropFree
+import androidx.compose.material.icons.automirrored.filled.RotateRight
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -24,15 +26,16 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.docscan.app.theme.AppColors
+import com.docscan.app.util.FileUtils
 import java.io.File
+import kotlin.math.abs
 
 /**
- * Manual crop editor screen with actual image display
+ * Manual crop editor screen with precise image display, rotation, and quad corner adjustments
  */
 @Composable
 fun CropEditorScreen(
@@ -41,35 +44,39 @@ fun CropEditorScreen(
     onConfirm: (Offset, Offset, Offset, Offset) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val screenWidth = LocalConfiguration.current.screenWidthDp.dp
-    
-    // Load bitmap from file with proper rotation
-    val bitmap = remember(imageFile) {
-        imageFile?.let { 
-            val bmp = BitmapFactory.decodeFile(it.absolutePath)
-            val rotation = com.docscan.app.util.FileUtils.getImageRotation(it)
-            if (rotation != 0) {
-                com.docscan.app.util.FileUtils.rotateBitmap(bmp, rotation)
-            } else {
-                bmp
-            }
+    var rotationDegrees by remember { mutableStateOf(0) }
+
+    // Load bitmap safely from file with EXIF rotation handled
+    val baseBitmap = remember(imageFile) {
+        imageFile?.let {
+            FileUtils.decodeSampledBitmap(it.absolutePath, 1920, 1920)
         }
     }
-    
-    // Crop corners state (normalized 0-1 coordinates)
-    val corners = remember {
-        mutableStateOf(
-            QuadCorners(
-                topLeft = Offset(0.1f, 0.1f),
-                topRight = Offset(0.9f, 0.1f),
-                bottomLeft = Offset(0.1f, 0.9f),
-                bottomRight = Offset(0.9f, 0.9f)
-            )
-        )
+
+    // Rotated bitmap if user taps Rotate button
+    val displayBitmap = remember(baseBitmap, rotationDegrees) {
+        if (baseBitmap == null) null
+        else if (rotationDegrees == 0) baseBitmap
+        else FileUtils.rotateBitmap(baseBitmap.copy(baseBitmap.config, true), rotationDegrees)
     }
-    
-    var draggedCorner: CornerType? by remember { mutableStateOf(null) }
-    
+
+    // Crop corners state (normalized 0-1 coordinates)
+    val defaultCorners = QuadCorners(
+        topLeft = Offset(0.05f, 0.05f),
+        topRight = Offset(0.95f, 0.05f),
+        bottomLeft = Offset(0.05f, 0.95f),
+        bottomRight = Offset(0.95f, 0.95f)
+    )
+    val corners = remember { mutableStateOf(defaultCorners) }
+
+    val imageAspectRatio = remember(displayBitmap) {
+        if (displayBitmap != null && displayBitmap.height > 0) {
+            displayBitmap.width.toFloat() / displayBitmap.height.toFloat()
+        } else {
+            0.75f
+        }
+    }
+
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -80,7 +87,7 @@ fun CropEditorScreen(
             title = {
                 Text(
                     text = "Crop Document",
-                    style = MaterialTheme.typography.headlineMedium,
+                    style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.SemiBold
                 )
             },
@@ -92,17 +99,43 @@ fun CropEditorScreen(
                     )
                 }
             },
+            actions = {
+                // Rotate 90 degrees
+                IconButton(onClick = {
+                    rotationDegrees = (rotationDegrees + 90) % 360
+                    corners.value = defaultCorners
+                }) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.RotateRight,
+                        contentDescription = "Rotate 90°"
+                    )
+                }
+                // Reset / Select Full Image
+                IconButton(onClick = {
+                    corners.value = QuadCorners(
+                        topLeft = Offset(0f, 0f),
+                        topRight = Offset(1f, 0f),
+                        bottomLeft = Offset(0f, 1f),
+                        bottomRight = Offset(1f, 1f)
+                    )
+                }) {
+                    Icon(
+                        imageVector = Icons.Default.CropFree,
+                        contentDescription = "Select Entire Image"
+                    )
+                }
+            },
             colors = TopAppBarDefaults.topAppBarColors(
                 containerColor = MaterialTheme.colorScheme.surface
             )
         )
-        
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(top = 64.dp)
         ) {
-            // Image display with crop overlay
+            // Image display container matching EXACT image aspect ratio
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -110,60 +143,57 @@ fun CropEditorScreen(
                     .padding(16.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .aspectRatio(3f / 4f)
-                        .background(Color.Gray.copy(alpha = 0.1f))
-                        .clip(RoundedCornerShape(8.dp))
-                ) {
-                    if (bitmap != null) {
+                if (displayBitmap != null) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(imageAspectRatio.coerceIn(0.4f, 2.5f))
+                            .background(Color.Black.copy(alpha = 0.05f))
+                            .clip(RoundedCornerShape(8.dp))
+                    ) {
                         androidx.compose.foundation.Image(
-                            bitmap = bitmap.asImageBitmap(),
+                            bitmap = displayBitmap.asImageBitmap(),
                             contentDescription = "Scanned Document",
-                            contentScale = ContentScale.Fit,
+                            contentScale = ContentScale.FillBounds,
                             modifier = Modifier.fillMaxSize()
                         )
-                        
-                        // Crop overlay with draggable corners
+
+                        // Crop overlay precisely aligned with image bounds
                         CropOverlay(
                             corners = corners.value,
                             onCornerDrag = { cornerType, offset ->
-                                draggedCorner = cornerType
                                 corners.value = corners.value.adjustCorner(cornerType, offset)
                             },
-                            onDragEnd = {
-                                draggedCorner = null
-                            },
+                            onDragEnd = { },
                             modifier = Modifier.fillMaxSize()
                         )
-                    } else {
-                        Box(
-                            modifier = Modifier.fillMaxSize(),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = "No image captured",
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
+                    }
+                } else {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "No image loaded",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
             }
-            
-            // Instructions and button
+
+            // Instructions text
             Text(
-                text = "Drag corners to adjust crop area",
+                text = "Drag the 4 corner circles to fit your document",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-                    .padding(bottom = 16.dp)
+                    .padding(horizontal = 20.dp)
+                    .padding(bottom = 12.dp)
             )
-            
-            // Next button
+
+            // Confirm & Next button
             Button(
                 onClick = {
                     onConfirm(
@@ -173,7 +203,7 @@ fun CropEditorScreen(
                         corners.value.bottomRight
                     )
                 },
-                enabled = bitmap != null,
+                enabled = displayBitmap != null,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.primary
                 ),
@@ -182,7 +212,7 @@ fun CropEditorScreen(
                     .fillMaxWidth()
                     .height(56.dp)
                     .padding(horizontal = 16.dp)
-                    .padding(bottom = 32.dp)
+                    .padding(bottom = 16.dp)
             ) {
                 Text(
                     text = "Next",
@@ -229,7 +259,7 @@ fun CropOverlay(
 ) {
     var canvasSize by remember { mutableStateOf(Size(0f, 0f)) }
     var activeCorner by remember { mutableStateOf<CornerType?>(null) }
-    
+
     Box(modifier = modifier) {
         Canvas(
             modifier = Modifier
@@ -241,8 +271,8 @@ fun CropOverlay(
                     )
                 }
         ) {
-            if (canvasSize.width == 0f || canvasSize.height == 0f) return@Canvas
-            
+            if (canvasSize.width <= 0f || canvasSize.height <= 0f) return@Canvas
+
             val topLeftPx = Offset(
                 corners.topLeft.x * size.width,
                 corners.topLeft.y * size.height
@@ -259,7 +289,7 @@ fun CropOverlay(
                 corners.bottomRight.x * size.width,
                 corners.bottomRight.y * size.height
             )
-            
+
             val path = Path().apply {
                 moveTo(topLeftPx.x, topLeftPx.y)
                 lineTo(topRightPx.x, topRightPx.y)
@@ -267,19 +297,25 @@ fun CropOverlay(
                 lineTo(bottomLeftPx.x, bottomLeftPx.y)
                 close()
             }
-            
-            // Draw crop area border (no overlay to keep image bright)
+
+            // Draw crop area border
             drawPath(
                 path = path,
                 color = Color.White,
-                style = androidx.compose.ui.graphics.drawscope.Stroke(width = 4.dp.toPx())
+                style = androidx.compose.ui.graphics.drawscope.Stroke(width = 3.dp.toPx())
             )
-            
-            // Draw corner handles - larger and more visible
-            val cornerRadius = 24.dp.toPx()
-            val activeRadius = 28.dp.toPx()
-            
-            // Draw white circles with blue border
+
+            // Inner blue accent stroke
+            drawPath(
+                path = path,
+                color = AppColors.ScannerCorner,
+                style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.5.dp.toPx())
+            )
+
+            // Corner handles
+            val cornerRadius = 20.dp.toPx()
+            val activeRadius = 26.dp.toPx()
+
             listOf(
                 topLeftPx to (activeCorner == CornerType.TopLeft),
                 topRightPx to (activeCorner == CornerType.TopRight),
@@ -293,26 +329,32 @@ fun CropOverlay(
                     radius = radius,
                     center = center
                 )
-                // Blue border
+                // Outer ring
                 drawCircle(
                     color = AppColors.ScannerCorner,
                     radius = radius,
                     center = center,
-                    style = androidx.compose.ui.graphics.drawscope.Stroke(width = 4.dp.toPx())
+                    style = androidx.compose.ui.graphics.drawscope.Stroke(width = 3.5.dp.toPx())
+                )
+                // Center dot
+                drawCircle(
+                    color = AppColors.ScannerCorner,
+                    radius = 4.dp.toPx(),
+                    center = center
                 )
             }
         }
-        
+
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .pointerInput(Unit) {
+                .pointerInput(canvasSize, corners) {
                     var currentCorner: CornerType? = null
-                    
+
                     detectDragGestures(
                         onDragStart = { offset ->
                             if (canvasSize.width > 0 && canvasSize.height > 0) {
-                                currentCorner = findNearestCorner(offset, corners, canvasSize, threshold = 150f)
+                                currentCorner = findNearestCorner(offset, corners, canvasSize, threshold = 200f)
                                 activeCorner = currentCorner
                             }
                         },
@@ -345,18 +387,18 @@ fun findNearestCorner(
     touchPoint: Offset,
     corners: QuadCorners,
     size: Size,
-    threshold: Float = 100f
+    threshold: Float = 150f
 ): CornerType? {
     val touchX = touchPoint.x / size.width
     val touchY = touchPoint.y / size.height
-    
+
     val distances = listOf(
-        CornerType.TopLeft to kotlin.math.abs(corners.topLeft.x - touchX) + kotlin.math.abs(corners.topLeft.y - touchY),
-        CornerType.TopRight to kotlin.math.abs(corners.topRight.x - touchX) + kotlin.math.abs(corners.topRight.y - touchY),
-        CornerType.BottomLeft to kotlin.math.abs(corners.bottomLeft.x - touchX) + kotlin.math.abs(corners.bottomLeft.y - touchY),
-        CornerType.BottomRight to kotlin.math.abs(corners.bottomRight.x - touchX) + kotlin.math.abs(corners.bottomRight.y - touchY)
+        CornerType.TopLeft to (abs(corners.topLeft.x - touchX) + abs(corners.topLeft.y - touchY)),
+        CornerType.TopRight to (abs(corners.topRight.x - touchX) + abs(corners.topRight.y - touchY)),
+        CornerType.BottomLeft to (abs(corners.bottomLeft.x - touchX) + abs(corners.bottomLeft.y - touchY)),
+        CornerType.BottomRight to (abs(corners.bottomRight.x - touchX) + abs(corners.bottomRight.y - touchY))
     )
-    
+
     val nearest = distances.minByOrNull { it.second }
     return if (nearest != null && nearest.second * size.width < threshold) {
         nearest.first

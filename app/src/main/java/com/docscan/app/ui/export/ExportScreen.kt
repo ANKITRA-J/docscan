@@ -7,7 +7,9 @@ import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -21,11 +23,10 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
-import com.docscan.app.R
 import com.docscan.app.util.FileUtils
 import com.docscan.app.util.ImageProcessor
 import com.docscan.app.util.PdfGenerator
@@ -33,6 +34,7 @@ import com.docscan.app.viewmodel.ScanViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -47,11 +49,27 @@ fun ExportScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var isExporting by remember { mutableStateOf(false) }
-    
+    var exportStatusText by remember { mutableStateOf("") }
+
+    // Load document if opening an existing one
+    LaunchedEffect(documentId) {
+        if (documentId.isNotBlank() && !documentId.startsWith("temp_")) {
+            viewModel.loadDocument(documentId)
+        }
+    }
+
+    val pagePaths = viewModel.getPagePaths()
     val finalBitmap = viewModel.getFinalBitmap()
-    val allPages = viewModel.getAllPages()
-    val pageCount = allPages.size
-    
+    val pageCount = if (pagePaths.isNotEmpty()) pagePaths.size else if (finalBitmap != null) 1 else 0
+
+    val timeStamp = remember { SimpleDateFormat("yyyyMMdd_HHmm", Locale.US).format(Date()) }
+    var docTitle by remember(viewModel.currentDocumentTitle.value) {
+        val initial = viewModel.currentDocumentTitle.value
+        mutableStateOf(if (initial.isNotBlank()) initial else "Scan_$timeStamp")
+    }
+
+    var selectedPageFormat by remember { mutableStateOf(PdfGenerator.PageFormat.A4) }
+
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -61,7 +79,7 @@ fun ExportScreen(
             title = {
                 Text(
                     text = "Export Document",
-                    style = MaterialTheme.typography.headlineMedium,
+                    style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.SemiBold
                 )
             },
@@ -77,16 +95,19 @@ fun ExportScreen(
                 containerColor = MaterialTheme.colorScheme.surface
             )
         )
-        
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(top = 64.dp)
+                .verticalScroll(rememberScrollState())
+                .padding(bottom = 32.dp)
         ) {
+            // Document Preview Card
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp)
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
                     .shadow(elevation = 4.dp, shape = RoundedCornerShape(12.dp)),
                 shape = RoundedCornerShape(12.dp),
                 colors = CardDefaults.cardColors(
@@ -96,177 +117,329 @@ fun ExportScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .aspectRatio(3f / 4f)
-                        .background(Color.Gray.copy(alpha = 0.1f))
-                        .clip(RoundedCornerShape(12.dp))
+                        .aspectRatio(1.2f)
+                        .background(Color.Gray.copy(alpha = 0.08f))
+                        .clip(RoundedCornerShape(12.dp)),
+                    contentAlignment = Alignment.Center
                 ) {
                     if (finalBitmap != null) {
                         androidx.compose.foundation.Image(
                             bitmap = finalBitmap.asImageBitmap(),
                             contentDescription = "Document Preview",
                             contentScale = ContentScale.Fit,
-                            modifier = Modifier.fillMaxSize()
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(8.dp)
                         )
-                    } else {
-                        Box(
-                            modifier = Modifier.fillMaxSize(),
-                            contentAlignment = Alignment.Center
-                        ) {
+                    } else if (pagePaths.isNotEmpty()) {
+                        // Load preview of first page
+                        var firstBmp by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
+                        LaunchedEffect(pagePaths) {
+                            withContext(Dispatchers.IO) {
+                                firstBmp = FileUtils.decodeSampledBitmap(pagePaths.first(), 800, 800)
+                            }
+                        }
+                        if (firstBmp != null) {
+                            androidx.compose.foundation.Image(
+                                bitmap = firstBmp!!.asImageBitmap(),
+                                contentDescription = "Document Preview",
+                                contentScale = ContentScale.Fit,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(8.dp)
+                            )
+                        } else {
                             Text(
-                                text = "Document Preview",
-                                style = MaterialTheme.typography.bodyLarge,
+                                text = "📄 $pageCount Pages",
+                                style = MaterialTheme.typography.titleMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
+                    } else {
+                        Text(
+                            text = "No document pages found",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
             }
-            
-            Spacer(modifier = Modifier.height(8.dp))
-            
-            Text(
-                text = "Choose export format",
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colorScheme.onSurface,
+
+            // Document Title Edit Field
+            OutlinedTextField(
+                value = docTitle,
+                onValueChange = {
+                    docTitle = it
+                    if (viewModel.currentDocumentId.value != null) {
+                        viewModel.updateDocumentName(viewModel.currentDocumentId.value!!, it)
+                    }
+                },
+                label = { Text("Document Name") },
+                singleLine = true,
+                leadingIcon = {
+                    Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(20.dp))
+                },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-                    .padding(bottom = 8.dp)
+                    .padding(horizontal = 16.dp, vertical = 6.dp),
+                shape = RoundedCornerShape(10.dp)
             )
-            
-            if (pageCount > 0) {
+
+            // Page count & format selector
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Text(
-                    text = "$pageCount page${if (pageCount > 1) "s" else ""}",
+                    text = "$pageCount page${if (pageCount != 1) "s" else ""}",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp)
-                        .padding(bottom = 16.dp)
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.primary
                 )
+
+                // Page format chips
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf(
+                        PdfGenerator.PageFormat.A4 to "A4",
+                        PdfGenerator.PageFormat.LETTER to "Letter",
+                        PdfGenerator.PageFormat.FIT_IMAGE to "Fit"
+                    ).forEach { (format, label) ->
+                        FilterChip(
+                            selected = selectedPageFormat == format,
+                            onClick = { selectedPageFormat = format },
+                            label = { Text(label, fontSize = 12.sp) }
+                        )
+                    }
+                }
             }
-            
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Export Options
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                // 1. Save to Downloads (PDF)
                 ExportOptionCard(
-                    title = stringResource(R.string.save_pdf),
-                    description = if (pageCount > 1) "Export $pageCount pages as PDF" else "Export as PDF document",
-                    icon = Icons.Default.PictureAsPdf,
+                    title = "Save PDF to Downloads",
+                    description = "Save formatted PDF ($pageCount pages) to device Downloads folder",
+                    icon = Icons.Default.Download,
+                    enabled = pageCount > 0 && !isExporting,
                     onClick = {
-                        if (allPages.isNotEmpty() && !isExporting) {
-                            isExporting = true
-                            scope.launch {
-                                val pdfFile = withContext(Dispatchers.IO) {
-                                    PdfGenerator.createPdfFromBitmaps(context, allPages)
-                                }
-                                
-                                isExporting = false
-                                
-                                if (pdfFile != null) {
-                                    // Create thumbnail from first page
-                                    val thumbnail = ImageProcessor.createThumbnail(allPages.first())
-                                    val thumbnailFile = FileUtils.createImageFile(context)
-                                    FileUtils.saveBitmap(thumbnail, thumbnailFile)
-                                    
-                                    val timeStamp = SimpleDateFormat("MMM dd, yyyy", Locale.US).format(Date())
-                                    viewModel.createDocument("Scan $timeStamp", thumbnailFile.absolutePath)
-                                    
-                                    Toast.makeText(context, "PDF saved successfully", Toast.LENGTH_SHORT).show()
-                                    
-                                    // Share PDF
-                                    val uri = FileProvider.getUriForFile(
+                        isExporting = true
+                        exportStatusText = "Generating PDF..."
+                        scope.launch {
+                            val cleanName = docTitle.ifBlank { "Scan_$timeStamp" }
+                            val pdfFile = withContext(Dispatchers.IO) {
+                                if (pagePaths.isNotEmpty()) {
+                                    PdfGenerator.createPdfFromPagePaths(
                                         context,
-                                        "${context.packageName}.fileprovider",
-                                        pdfFile
+                                        pagePaths,
+                                        cleanName,
+                                        selectedPageFormat
                                     )
-                                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                                        type = "application/pdf"
-                                        putExtra(Intent.EXTRA_STREAM, uri)
-                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                    }
-                                    context.startActivity(Intent.createChooser(shareIntent, "Share PDF"))
-                                    
-                                    // Reset for next scan
-                                    viewModel.reset()
-                                    onExportComplete()
+                                } else if (finalBitmap != null) {
+                                    PdfGenerator.createPdfFromBitmaps(
+                                        context,
+                                        listOf(finalBitmap),
+                                        cleanName,
+                                        selectedPageFormat
+                                    )
                                 } else {
-                                    Toast.makeText(context, "Failed to create PDF", Toast.LENGTH_SHORT).show()
+                                    null
                                 }
                             }
+
+                            if (pdfFile != null) {
+                                exportStatusText = "Saving to Downloads..."
+                                val savedUri = withContext(Dispatchers.IO) {
+                                    FileUtils.saveToDownloads(
+                                        context,
+                                        pdfFile,
+                                        pdfFile.name,
+                                        "application/pdf"
+                                    )
+                                }
+
+                                // Create thumbnail and persist document
+                                val thumbBmp = finalBitmap ?: pagePaths.firstOrNull()?.let {
+                                    FileUtils.decodeSampledBitmap(it, 300, 300)
+                                }
+                                val thumbFile = FileUtils.createImageFile(context)
+                                if (thumbBmp != null) {
+                                    FileUtils.saveBitmap(ImageProcessor.createThumbnail(thumbBmp), thumbFile)
+                                }
+                                viewModel.createDocument(cleanName, thumbFile.absolutePath)
+
+                                isExporting = false
+                                if (savedUri != null) {
+                                    Toast.makeText(
+                                        context,
+                                        "Saved to Downloads: ${pdfFile.name}",
+                                        Toast.LENGTH_LONG
+                                    ).show()
+                                } else {
+                                    Toast.makeText(
+                                        context,
+                                        "PDF created: ${pdfFile.name}",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                                viewModel.reset()
+                                onExportComplete()
+                            } else {
+                                isExporting = false
+                                Toast.makeText(context, "Failed to generate PDF", Toast.LENGTH_SHORT).show()
+                            }
                         }
-                    },
-                    enabled = finalBitmap != null && !isExporting,
-                    modifier = Modifier.fillMaxWidth()
+                    }
                 )
-                
+
+                // 2. Share PDF
                 ExportOptionCard(
-                    title = stringResource(R.string.save_image),
-                    description = "Export as JPEG image",
-                    icon = Icons.Default.Image,
+                    title = "Share PDF",
+                    description = "Send PDF via WhatsApp, Email, Drive or other apps",
+                    icon = Icons.Default.Share,
+                    enabled = pageCount > 0 && !isExporting,
                     onClick = {
-                        if (finalBitmap != null && !isExporting) {
-                            isExporting = true
-                            scope.launch {
-                                val imageFile = withContext(Dispatchers.IO) {
-                                    PdfGenerator.saveImageAsJpeg(context, finalBitmap)
-                                }
-                                
-                                isExporting = false
-                                
-                                if (imageFile != null) {
-                                    // Create thumbnail and save document
-                                    val thumbnail = ImageProcessor.createThumbnail(finalBitmap)
-                                    val thumbnailFile = FileUtils.createImageFile(context)
-                                    FileUtils.saveBitmap(thumbnail, thumbnailFile)
-                                    
-                                    val timeStamp = SimpleDateFormat("MMM dd, yyyy", Locale.US).format(Date())
-                                    viewModel.createDocument("Scan $timeStamp", thumbnailFile.absolutePath)
-                                    
-                                    Toast.makeText(context, "Image saved successfully", Toast.LENGTH_SHORT).show()
-                                    
-                                    // Share image
-                                    val uri = FileProvider.getUriForFile(
+                        isExporting = true
+                        exportStatusText = "Preparing PDF for sharing..."
+                        scope.launch {
+                            val cleanName = docTitle.ifBlank { "Scan_$timeStamp" }
+                            val pdfFile = withContext(Dispatchers.IO) {
+                                if (pagePaths.isNotEmpty()) {
+                                    PdfGenerator.createPdfFromPagePaths(
                                         context,
-                                        "${context.packageName}.fileprovider",
-                                        imageFile
+                                        pagePaths,
+                                        cleanName,
+                                        selectedPageFormat
                                     )
-                                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                                        type = "image/jpeg"
-                                        putExtra(Intent.EXTRA_STREAM, uri)
-                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                    }
-                                    context.startActivity(Intent.createChooser(shareIntent, "Share Image"))
-                                    
-                                    // Reset for next scan
-                                    viewModel.reset()
-                                    onExportComplete()
+                                } else if (finalBitmap != null) {
+                                    PdfGenerator.createPdfFromBitmaps(
+                                        context,
+                                        listOf(finalBitmap),
+                                        cleanName,
+                                        selectedPageFormat
+                                    )
                                 } else {
-                                    Toast.makeText(context, "Failed to save image", Toast.LENGTH_SHORT).show()
+                                    null
                                 }
                             }
+
+                            isExporting = false
+                            if (pdfFile != null) {
+                                val thumbBmp = finalBitmap ?: pagePaths.firstOrNull()?.let {
+                                    FileUtils.decodeSampledBitmap(it, 300, 300)
+                                }
+                                val thumbFile = FileUtils.createImageFile(context)
+                                if (thumbBmp != null) {
+                                    FileUtils.saveBitmap(ImageProcessor.createThumbnail(thumbBmp), thumbFile)
+                                }
+                                viewModel.createDocument(cleanName, thumbFile.absolutePath)
+
+                                val uri = FileProvider.getUriForFile(
+                                    context,
+                                    "${context.packageName}.fileprovider",
+                                    pdfFile
+                                )
+                                val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                    type = "application/pdf"
+                                    putExtra(Intent.EXTRA_STREAM, uri)
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                }
+                                context.startActivity(Intent.createChooser(shareIntent, "Share Document PDF"))
+                                viewModel.reset()
+                                onExportComplete()
+                            } else {
+                                Toast.makeText(context, "Failed to create PDF", Toast.LENGTH_SHORT).show()
+                            }
                         }
-                    },
-                    enabled = finalBitmap != null && !isExporting,
-                    modifier = Modifier.fillMaxWidth()
+                    }
+                )
+
+                // 3. Save as Image
+                ExportOptionCard(
+                    title = "Save Image",
+                    description = if (pageCount > 1) "Save all $pageCount pages as JPEG images" else "Save as JPEG image",
+                    icon = Icons.Default.Image,
+                    enabled = pageCount > 0 && !isExporting,
+                    onClick = {
+                        isExporting = true
+                        exportStatusText = "Saving images..."
+                        scope.launch {
+                            val cleanName = docTitle.ifBlank { "Scan_$timeStamp" }
+                            var savedCount = 0
+
+                            withContext(Dispatchers.IO) {
+                                if (pagePaths.isNotEmpty()) {
+                                    pagePaths.forEachIndexed { idx, p ->
+                                        val srcFile = File(p)
+                                        val pageName = "${cleanName}_page_${idx + 1}.jpg"
+                                        val uri = FileUtils.saveToDownloads(context, srcFile, pageName, "image/jpeg")
+                                        if (uri != null) savedCount++
+                                    }
+                                } else if (finalBitmap != null) {
+                                    val imgFile = PdfGenerator.saveImageAsJpeg(context, finalBitmap, cleanName)
+                                    if (imgFile != null) {
+                                        val uri = FileUtils.saveToDownloads(context, imgFile, imgFile.name, "image/jpeg")
+                                        if (uri != null) savedCount++
+                                    }
+                                }
+                            }
+
+                            // Create thumbnail and persist document
+                            val thumbBmp = finalBitmap ?: pagePaths.firstOrNull()?.let {
+                                FileUtils.decodeSampledBitmap(it, 300, 300)
+                            }
+                            val thumbFile = FileUtils.createImageFile(context)
+                            if (thumbBmp != null) {
+                                FileUtils.saveBitmap(ImageProcessor.createThumbnail(thumbBmp), thumbFile)
+                            }
+                            viewModel.createDocument(cleanName, thumbFile.absolutePath)
+
+                            isExporting = false
+                            if (savedCount > 0) {
+                                Toast.makeText(
+                                    context,
+                                    "Saved $savedCount image${if (savedCount > 1) "s" else ""} to Downloads",
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            } else {
+                                Toast.makeText(context, "Failed to save image", Toast.LENGTH_SHORT).show()
+                            }
+                            viewModel.reset()
+                            onExportComplete()
+                        }
+                    }
                 )
             }
-            
+
+            // Exporting progress indicator
             if (isExporting) {
-                Box(
+                Spacer(modifier = Modifier.height(24.dp))
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(16.dp),
-                    contentAlignment = Alignment.Center
+                        .padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(24.dp),
+                        strokeWidth = 2.5.dp
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
                     Text(
-                        text = "Exporting...",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.primary
+                        text = exportStatusText,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Medium
                     )
                 }
             }
@@ -290,20 +463,20 @@ fun ExportOptionCard(
             .shadow(elevation = 2.dp, shape = RoundedCornerShape(12.dp)),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(
-            containerColor = if (enabled) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.surfaceVariant
+            containerColor = if (enabled) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
         )
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(20.dp),
+                .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = null,
-                tint = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(32.dp)
+                tint = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                modifier = Modifier.size(28.dp)
             )
             Spacer(modifier = Modifier.width(16.dp))
             Column(
@@ -311,11 +484,11 @@ fun ExportOptionCard(
             ) {
                 Text(
                     text = title,
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.Medium,
-                    color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                 )
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = description,
                     style = MaterialTheme.typography.bodySmall,
@@ -325,8 +498,8 @@ fun ExportOptionCard(
             Icon(
                 imageVector = Icons.Default.ChevronRight,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(24.dp)
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                modifier = Modifier.size(20.dp)
             )
         }
     }

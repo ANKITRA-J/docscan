@@ -11,10 +11,11 @@ import com.docscan.app.ui.export.ExportScreen
 import com.docscan.app.ui.home.HomeScreen
 import com.docscan.app.ui.scanner.ScannerScreen
 import com.docscan.app.viewmodel.ScanViewModel
+import java.io.File
 
 /**
  * Navigation graph for the Document Scanner app
- * Defines all routes and navigation between screens
+ * Defines all routes and seamless multi-page transitions
  */
 @Composable
 fun NavGraph(
@@ -34,20 +35,23 @@ fun NavGraph(
                     viewModel.reset()
                     navController.navigate(Screen.Scanner.route)
                 },
-                onGalleryImagesSelected = { files: List<java.io.File> ->
+                onGalleryImagesSelected = { files: List<File> ->
                     viewModel.reset()
                     if (files.isNotEmpty()) {
-                        // Set all files in queue
                         viewModel.setImageQueue(files)
                         navController.navigate(Screen.CropEditor.route)
                     }
                 },
                 onDocumentClick = { document ->
+                    viewModel.loadDocument(document.id)
                     navController.navigate(Screen.Export.createRoute(document.id))
+                },
+                onDeleteDocument = { document ->
+                    viewModel.deleteDocument(document.id)
                 }
             )
         }
-        
+
         // Scanner preview screen
         composable(Screen.Scanner.route) {
             ScannerScreen(
@@ -60,7 +64,7 @@ fun NavGraph(
                 }
             )
         }
-        
+
         // Manual crop editor screen
         composable(Screen.CropEditor.route) {
             CropEditorScreen(
@@ -74,13 +78,15 @@ fun NavGraph(
                 }
             )
         }
-        
-        // Enhance modes UI screen
+
+        // Enhance modes screen
         composable(Screen.EnhanceModes.route) {
             EnhanceModesScreen(
                 enhancedBitmap = viewModel.enhancedBitmap.value,
                 currentMode = viewModel.currentEnhanceMode.value,
                 pageCount = viewModel.getPageCount(),
+                queueTotal = viewModel.queueTotalCount.value,
+                queueIndex = viewModel.queueCurrentIndex.value,
                 hasMoreInQueue = viewModel.hasMoreImagesInQueue(),
                 onModeSelected = { mode ->
                     viewModel.applyEnhancement(mode)
@@ -89,35 +95,38 @@ fun NavGraph(
                     navController.popBackStack()
                 },
                 onScanMore = {
-                    // Save current page
+                    // Commit current page to disk
                     viewModel.addPageToCurrentDocument()
                     viewModel.resetCurrentPage()
-                    // Go back to scanner
+                    // Navigate to scanner for next page
                     navController.navigate(Screen.Scanner.route) {
                         popUpTo(Screen.Home.route)
                     }
                 },
                 onNext = {
-                    // Save current page
+                    // Commit current page to disk
                     viewModel.addPageToCurrentDocument()
-                    viewModel.resetCurrentPage()
-                    // Process next image from queue
-                    viewModel.processNextImageFromQueue()
-                    // Go to crop screen for next image
-                    navController.navigate(Screen.CropEditor.route) {
-                        popUpTo(Screen.Home.route)
+                    // Move to next image from queue
+                    val hasNext = viewModel.processNextImageFromQueue()
+                    if (hasNext) {
+                        navController.navigate(Screen.CropEditor.route) {
+                            popUpTo(Screen.Home.route)
+                        }
+                    } else {
+                        val docId = viewModel.ensureDocumentId()
+                        navController.navigate(Screen.Export.createRoute(docId))
                     }
                 },
                 onConfirm = {
-                    // Save current page
+                    // Commit current page to disk
                     viewModel.addPageToCurrentDocument()
                     // Navigate to export
-                    val docId = "temp_${System.currentTimeMillis()}"
+                    val docId = viewModel.ensureDocumentId()
                     navController.navigate(Screen.Export.createRoute(docId))
                 }
             )
         }
-        
+
         // Export screen
         composable(
             route = Screen.Export.route,
@@ -128,13 +137,14 @@ fun NavGraph(
                 documentId = documentId,
                 viewModel = viewModel,
                 onClose = {
+                    viewModel.reset()
                     navController.popBackStack(Screen.Home.route, inclusive = false)
                 },
                 onExportComplete = {
+                    viewModel.reset()
                     navController.popBackStack(Screen.Home.route, inclusive = false)
                 }
             )
         }
     }
 }
-

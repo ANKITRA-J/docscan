@@ -4,17 +4,20 @@ package com.docscan.app.ui.enhance
 
 import android.graphics.Bitmap
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
@@ -29,6 +32,8 @@ fun EnhanceModesScreen(
     enhancedBitmap: Bitmap?,
     currentMode: EnhanceMode,
     pageCount: Int,
+    queueTotal: Int,
+    queueIndex: Int,
     hasMoreInQueue: Boolean,
     onModeSelected: (EnhanceMode) -> Unit,
     onClose: () -> Unit,
@@ -38,12 +43,11 @@ fun EnhanceModesScreen(
     modifier: Modifier = Modifier
 ) {
     var selectedMode by remember { mutableStateOf(currentMode) }
-    
-    // Update selected mode when currentMode changes
+
     LaunchedEffect(currentMode) {
         selectedMode = currentMode
     }
-    
+
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -53,7 +57,7 @@ fun EnhanceModesScreen(
             title = {
                 Text(
                     text = "Enhance Document",
-                    style = MaterialTheme.typography.headlineMedium,
+                    style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.SemiBold
                 )
             },
@@ -69,12 +73,13 @@ fun EnhanceModesScreen(
                 containerColor = MaterialTheme.colorScheme.surface
             )
         )
-        
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(top = 64.dp)
         ) {
+            // Enhanced Document Preview
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -85,7 +90,6 @@ fun EnhanceModesScreen(
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .aspectRatio(3f / 4f)
                         .shadow(elevation = 4.dp, shape = RoundedCornerShape(12.dp)),
                     shape = RoundedCornerShape(12.dp),
                     colors = CardDefaults.cardColors(
@@ -93,21 +97,34 @@ fun EnhanceModesScreen(
                     )
                 ) {
                     if (enhancedBitmap != null) {
-                        androidx.compose.foundation.Image(
-                            bitmap = enhancedBitmap.asImageBitmap(),
-                            contentDescription = "Enhanced Document",
-                            contentScale = ContentScale.Fit,
-                            modifier = Modifier.fillMaxSize()
-                        )
+                        val aspectRatio = if (enhancedBitmap.height > 0) {
+                            (enhancedBitmap.width.toFloat() / enhancedBitmap.height.toFloat()).coerceIn(0.4f, 2.5f)
+                        } else {
+                            0.75f
+                        }
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(aspectRatio)
+                                .clip(RoundedCornerShape(12.dp))
+                        ) {
+                            androidx.compose.foundation.Image(
+                                bitmap = enhancedBitmap.asImageBitmap(),
+                                contentDescription = "Enhanced Document",
+                                contentScale = ContentScale.Fit,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
                     } else {
                         Box(
                             modifier = Modifier
-                                .fillMaxSize()
+                                .fillMaxWidth()
+                                .aspectRatio(0.75f)
                                 .background(Color.Gray.copy(alpha = 0.1f)),
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = "No image available",
+                                text = "Processing image...",
                                 style = MaterialTheme.typography.bodyLarge,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -115,23 +132,24 @@ fun EnhanceModesScreen(
                     }
                 }
             }
-            
+
+            // Mode Selector
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp)
-                    .padding(bottom = 16.dp)
+                    .padding(bottom = 12.dp)
             ) {
                 Text(
-                    text = "Enhancement Mode",
+                    text = "Enhancement Filter",
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.Medium,
                     color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.padding(bottom = 12.dp)
+                    modifier = Modifier.padding(bottom = 8.dp)
                 )
-                
+
                 LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     items(EnhanceMode.values()) { mode ->
@@ -146,33 +164,42 @@ fun EnhanceModesScreen(
                     }
                 }
             }
-            
-            // Page count indicator
-            if (pageCount > 0 || hasMoreInQueue) {
+
+            // Page count / queue indicator
+            val pageStatusText = when {
+                queueTotal > 1 -> "Page ${queueIndex + 1} of $queueTotal" +
+                        if (hasMoreInQueue) " (${queueTotal - queueIndex - 1} remaining in queue)" else " (Last page)"
+                pageCount > 0 -> "${pageCount + 1} pages scanned so far"
+                else -> "Page 1"
+            }
+
+            Surface(
+                color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f),
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .padding(bottom = 12.dp)
+            ) {
                 Text(
-                    text = if (hasMoreInQueue) 
-                        "${pageCount + 1} page${if (pageCount > 0) "s" else ""} scanned (more queued)" 
-                    else 
-                        "${pageCount + 1} page${if (pageCount > 0) "s" else ""} scanned",
+                    text = pageStatusText,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp)
-                        .padding(bottom = 8.dp)
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                 )
             }
-            
-            // Buttons row
+
+            // Action Buttons
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp)
-                    .padding(bottom = 32.dp),
+                    .padding(bottom = 24.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 if (hasMoreInQueue) {
-                    // Next button (for queued images)
+                    // Next Image in Queue
                     Button(
                         onClick = {
                             onModeSelected(selectedMode)
@@ -185,12 +212,18 @@ fun EnhanceModesScreen(
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(56.dp)
+                            .height(54.dp)
                     ) {
                         Text(
-                            text = "Next Image",
+                            text = "Next Image (${queueIndex + 2}/$queueTotal)",
                             style = MaterialTheme.typography.labelLarge,
                             fontSize = 16.sp
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Icon(
+                            imageVector = Icons.Default.Check,
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp)
                         )
                     }
                 } else {
@@ -204,16 +237,22 @@ fun EnhanceModesScreen(
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier
                             .weight(1f)
-                            .height(56.dp)
+                            .height(54.dp)
                     ) {
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             text = "Scan More",
                             style = MaterialTheme.typography.labelLarge,
-                            fontSize = 16.sp
+                            fontSize = 15.sp
                         )
                     }
-                    
-                    // Done button
+
+                    // Done / Finish button
                     Button(
                         onClick = {
                             onModeSelected(selectedMode)
@@ -226,14 +265,14 @@ fun EnhanceModesScreen(
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier
                             .weight(1f)
-                            .height(56.dp)
+                            .height(54.dp)
                     ) {
                         Text(
                             text = "Done",
                             style = MaterialTheme.typography.labelLarge,
                             fontSize = 16.sp
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
                         Icon(
                             imageVector = Icons.Default.Check,
                             contentDescription = null,
@@ -253,34 +292,19 @@ fun EnhanceModeChip(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val containerColor = if (isSelected) {
-        MaterialTheme.colorScheme.primary
-    } else {
-        MaterialTheme.colorScheme.surfaceVariant
-    }
-    
-    val contentColor = if (isSelected) {
-        MaterialTheme.colorScheme.onPrimary
-    } else {
-        MaterialTheme.colorScheme.onSurfaceVariant
-    }
-    
     Surface(
-        onClick = onClick,
-        modifier = modifier,
+        color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+        contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
         shape = RoundedCornerShape(20.dp),
-        color = containerColor,
-        contentColor = contentColor
+        modifier = modifier
+            .clip(RoundedCornerShape(20.dp))
+            .clickable(onClick = onClick)
     ) {
-        Box(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = mode.displayName,
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
-            )
-        }
+        Text(
+            text = mode.displayName,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+        )
     }
 }

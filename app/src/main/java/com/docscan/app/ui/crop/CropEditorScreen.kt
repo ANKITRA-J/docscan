@@ -57,7 +57,7 @@ fun CropEditorScreen(
     val displayBitmap = remember(baseBitmap, rotationDegrees) {
         if (baseBitmap == null) null
         else if (rotationDegrees == 0) baseBitmap
-        else FileUtils.rotateBitmap(baseBitmap.copy(baseBitmap.config, true), rotationDegrees)
+        else FileUtils.rotateBitmap(baseBitmap, rotationDegrees, recycleSource = false)
     }
 
     // Crop corners state (normalized 0-1 coordinates)

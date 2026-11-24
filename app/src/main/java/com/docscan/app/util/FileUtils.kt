@@ -113,13 +113,13 @@ object FileUtils {
     /**
      * Rotate bitmap based on degrees
      */
-    fun rotateBitmap(bitmap: Bitmap, degrees: Int): Bitmap {
+    fun rotateBitmap(bitmap: Bitmap, degrees: Int, recycleSource: Boolean = false): Bitmap {
         if (degrees == 0) return bitmap
         return try {
             val matrix = Matrix()
             matrix.postRotate(degrees.toFloat())
             val rotated = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
-            if (rotated != bitmap) {
+            if (recycleSource && rotated != bitmap) {
                 bitmap.recycle()
             }
             rotated
